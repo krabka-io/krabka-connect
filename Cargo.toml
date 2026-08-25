@@ -1,0 +1,120 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.4.0"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["The Crabka Authors"]
+rust-version = "1.97.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Intentional while the public API is still pre-1.0; re-evaluate once the
+# API surfaces stabilise.
+clone_on_copy = "warn"
+
+[profile.mutants]
+inherits = "test"
+debug = "none"
+
+[profile.dev]
+# Split debug info into a separate file (reduces linker work)
+split-debuginfo = "packed"
+
+[workspace.dependencies]
+anyhow = "1"
+assert2 = "0.4"
+async-trait = "0.1"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+bytes = "1"
+clap = { version = "4", features = ["derive"] }
+datatest-stable = "0.3.3"
+derive_more = { version = "2", features = ["display", "from", "into", "deref", "as_ref", "constructor", "from_str", "add", "add_assign", "mul", "sum"] }
+futures-util = { version = "0.3", features = ["sink"] }
+mockall = "0.15"
+mutants = "0.0.4"
+postgres-types = "0.2"
+proc-macro-crate = "3"
+proc-macro2 = "1"
+prometheus-client = "0.25"
+prost = "0.14"
+prost-reflect = "0.16"
+qubit-clock = "~0.8.1"
+quote = "1"
+refined_type = "0.6"
+regex = "1"
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "ring"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+sha2 = "0.11"
+syn = { version = "3", features = ["full", "extra-traits"] }
+tempfile = "3"
+testcontainers = "0.28"
+thiserror = "2"
+tokio = { version = "1", default-features = false }
+tokio-postgres = "0.7"
+tokio-util = { version = "0.7", default-features = false }
+tower = "0.5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+trybuild = "1"
+# Sibling repositories. Declared against crates.io here and in the member
+# manifests; the patch table below is the single place a revision is bumped.
+crabka-ids = "0.4.0"
+crabka-security = "0.4.0"
+crabka-units = "0.4.0"
+crabka-client-admin = "0.4.0"
+crabka-client-consumer = "0.4.0"
+crabka-client-core = "0.4.0"
+crabka-client-producer = "0.4.0"
+crabka-logfmt = "0.4.0"
+crabka-broker = "0.4.0"
+crabka-schema-serde = "0.4.0"
+
+# Every crate each sibling publishes is listed, not only the ones this repo
+# names directly: cargo ignores a dependency's own patch table, so a crate
+# reached transitively would otherwise come from the registry while its git
+# twin is also in the graph.
+#
+# Cargo warns that the entries this repo does not currently reach are unused.
+# That is expected and the entries stay. None of these crates is on crates.io
+# today, so a missing patch fails loudly rather than resolving to a registry
+# copy -- but the moment one is published, a gap here becomes a silent
+# substitution instead, which is the failure this table exists to prevent.
+[patch.crates-io]
+crabka-compression = { git = "https://github.com/krabka-io/krabka-protocol", rev = "7a5aab7499455c068e8ff2f269b05b21fd599046" }
+crabka-ids = { git = "https://github.com/krabka-io/krabka-protocol", rev = "7a5aab7499455c068e8ff2f269b05b21fd599046" }
+crabka-kafka-tap = { git = "https://github.com/krabka-io/krabka-protocol", rev = "7a5aab7499455c068e8ff2f269b05b21fd599046" }
+crabka-metadata = { git = "https://github.com/krabka-io/krabka-protocol", rev = "7a5aab7499455c068e8ff2f269b05b21fd599046" }
+crabka-protocol = { git = "https://github.com/krabka-io/krabka-protocol", rev = "7a5aab7499455c068e8ff2f269b05b21fd599046" }
+crabka-security = { git = "https://github.com/krabka-io/krabka-protocol", rev = "7a5aab7499455c068e8ff2f269b05b21fd599046" }
+crabka-trace-context = { git = "https://github.com/krabka-io/krabka-protocol", rev = "7a5aab7499455c068e8ff2f269b05b21fd599046" }
+crabka-units = { git = "https://github.com/krabka-io/krabka-protocol", rev = "7a5aab7499455c068e8ff2f269b05b21fd599046" }
+crabka-voters = { git = "https://github.com/krabka-io/krabka-protocol", rev = "7a5aab7499455c068e8ff2f269b05b21fd599046" }
+crabka-client-admin = { git = "https://github.com/krabka-io/krabka-client-rs", rev = "dbea46923441c19b7858d7e3278ca5b77af2e00b" }
+crabka-client-consumer = { git = "https://github.com/krabka-io/krabka-client-rs", rev = "dbea46923441c19b7858d7e3278ca5b77af2e00b" }
+crabka-client-core = { git = "https://github.com/krabka-io/krabka-client-rs", rev = "dbea46923441c19b7858d7e3278ca5b77af2e00b" }
+crabka-client-producer = { git = "https://github.com/krabka-io/krabka-client-rs", rev = "dbea46923441c19b7858d7e3278ca5b77af2e00b" }
+crabka-audit = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-authz = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-broker = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-format = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-kraft-core = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-log = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-logfmt = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-object-store = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-raft = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-records-legacy = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-remote-storage = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-remote-storage-topic = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-telemetry = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-throttle = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-verified = { git = "https://github.com/krabka-io/krabka-broker", rev = "e516a87c135bd87313283f8d38a3722e16912ba6" }
+crabka-client-streams = { git = "https://github.com/krabka-io/krabka-streams-rs", rev = "f2d87752df1e3649dc16c374419aeca871b49e95" }
+crabka-schema-serde = { git = "https://github.com/krabka-io/krabka-streams-rs", rev = "f2d87752df1e3649dc16c374419aeca871b49e95" }

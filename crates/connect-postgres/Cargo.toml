@@ -20,7 +20,7 @@ workspace = true
 [dependencies]
 assert2 = { workspace = true }
 crabka-connect = { path = "../connect", version = "0.4.0" }
-crabka-schema-serde = { path = "../schema-serde", version = "0.4.0", features = ["protobuf"] }
+crabka-schema-serde = { workspace = true, features = ["protobuf"] }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 derive_more = { workspace = true }

@@ -15,20 +15,14 @@ use crabka_connect_postgres::{
     schema::PostgresProtoEncoder,
 };
 use crabka_connect_worker::{KafkaCheckpointStore, KafkaSink};
-use crabka_schema_registry::{
-    config::{RegistryConfig, RegistryRuntimeConfig, SecurityConfig},
-    kafkastore::KafkaStore,
-    rest::{self, AppState},
-};
 use crabka_units::millis;
 use testcontainers::{
     ContainerAsync, GenericImage, ImageExt,
     core::{IntoContainerPort as _, WaitFor},
     runners::AsyncRunner as _,
 };
-use tokio::{net::TcpListener, task::JoinHandle, time::timeout};
+use tokio::{task::JoinHandle, time::timeout};
 use tokio_postgres::{Client, NoTls};
-use tokio_util::sync::CancellationToken;
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -40,6 +34,7 @@ type TestResult<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 const CONTAINER_START_TIMEOUT: Duration = Duration::from_mins(2);
 
 const POSTGRES_PORT: u16 = 5432;
+const REGISTRY_PORT: u16 = 8081;
 const TOPIC: &str = "db.public.orders";
 const CONNECTOR_ID: &str = "orders-cdc-acceptance";
 const WAIT: Duration = Duration::from_secs(30);
@@ -68,12 +63,15 @@ async fn postgres_cdc_survives_checkpointed_worker_restart() -> TestResult {
 
     let log_dir = tempfile::TempDir::new()?;
     let broker_addr = reserve_address()?;
+    let gateway = docker_gateway()?;
     let mut broker_config = BrokerConfig::for_tests(log_dir.path().to_path_buf());
     broker_config.listen_addr = broker_addr;
-    broker_config.advertised_listener = broker_addr.to_string();
+    broker_config.advertised_listener = format!("{gateway}:{}", broker_addr.port());
     let broker = Broker::start(broker_config).await?;
-    let bootstrap = broker.listen_addr().to_string();
-    let (registry_url, registry_cancel) = start_registry(&bootstrap).await?;
+    let bootstrap = format!("{gateway}:{}", broker.listen_addr().port());
+    let registry = start_registry(&bootstrap).await?;
+    let registry_port = registry.get_host_port_ipv4(REGISTRY_PORT.tcp()).await?;
+    let registry_url = format!("http://127.0.0.1:{registry_port}");
 
     let first_runtime = start_connector(&database_url, &bootstrap, &registry_url).await?;
     wait_for_running(&first_runtime).await?;
@@ -134,7 +132,7 @@ async fn postgres_cdc_survives_checkpointed_worker_restart() -> TestResult {
     assert!(final_records[3].value.is_some());
 
     second_runtime.shutdown().await?;
-    registry_cancel.cancel();
+    drop(registry);
     broker.shutdown().await;
     drop(database);
     database_connection.await??;
@@ -142,9 +140,44 @@ async fn postgres_cdc_survives_checkpointed_worker_restart() -> TestResult {
     Ok(())
 }
 
+/// Reserves a port on every interface.
+///
+/// The registry runs in a container and has to reach this broker, so binding
+/// the loopback address would put the broker somewhere the container cannot
+/// route to.
 fn reserve_address() -> io::Result<std::net::SocketAddr> {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let listener = std::net::TcpListener::bind("0.0.0.0:0")?;
     listener.local_addr()
+}
+
+/// The host's address on Docker's default bridge.
+///
+/// This is the one address both sides can use: it is a local interface on the
+/// host, and it is the default route out of a container on that bridge. The
+/// broker advertises it so that the registry container and the test process
+/// itself both reach the same listener.
+fn docker_gateway() -> TestResult<String> {
+    let output = std::process::Command::new("docker")
+        .args([
+            "network",
+            "inspect",
+            "bridge",
+            "--format",
+            "{{ (index .IPAM.Config 0).Gateway }}",
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Err(io::Error::other(format!(
+            "could not read the docker bridge gateway: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+        .into());
+    }
+    let gateway = String::from_utf8(output.stdout)?.trim().to_owned();
+    if gateway.is_empty() {
+        return Err(io::Error::other("the docker bridge reported no gateway").into());
+    }
+    Ok(gateway)
 }
 
 async fn start_postgres() -> TestResult<ContainerAsync<GenericImage>> {
@@ -181,28 +214,33 @@ async fn connect_postgres(
     Ok(connected)
 }
 
-async fn start_registry(bootstrap: &str) -> TestResult<(String, CancellationToken)> {
-    let cancel = CancellationToken::new();
-    let config = RegistryConfig {
-        bootstrap: bootstrap.to_owned(),
-        schemas_topic: "_schemas".into(),
-        schemas_topic_rf: 1,
-        client_id: "connect-worker-acceptance-registry".into(),
-        advertised_url: "http://127.0.0.1:0".into(),
-        group_id: "connect-worker-acceptance-registry".into(),
-        leader_eligibility: true,
-        runtime: RegistryRuntimeConfig::default(),
-        security: SecurityConfig::default(),
-    };
-    let store = KafkaStore::start(&config, cancel.clone()).await?;
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
-    let registry_url = format!("http://{}", listener.local_addr()?);
-    let serve_cancel = cancel.clone();
-    tokio::spawn(async move {
-        let _ =
-            rest::serve::serve_http(listener, rest::router(AppState { store }), serve_cancel).await;
-    });
-    Ok((registry_url, cancel))
+/// Starts a Confluent Schema Registry against `bootstrap`.
+///
+/// The registry is the reference implementation this project's own registry is
+/// tested for conformance against, so the connector talks to the same REST API
+/// here as it would in production. It is a container rather than an in-process
+/// server because the in-process one lives in a different repository now.
+///
+/// `bootstrap` must be an address the container can route to; see
+/// [`docker_gateway`].
+async fn start_registry(bootstrap: &str) -> TestResult<ContainerAsync<GenericImage>> {
+    let registry = timeout(
+        CONTAINER_START_TIMEOUT,
+        GenericImage::new("mirror.gcr.io/confluentinc/cp-schema-registry", "7.7.1")
+            .with_wait_for(WaitFor::message_on_stdout("Server started, listening for requests"))
+            .with_env_var("SCHEMA_REGISTRY_HOST_NAME", "localhost")
+            .with_env_var("SCHEMA_REGISTRY_LISTENERS", format!("http://0.0.0.0:{REGISTRY_PORT}"))
+            .with_env_var(
+                "SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS",
+                format!("PLAINTEXT://{bootstrap}"),
+            )
+            .with_env_var("SCHEMA_REGISTRY_KAFKASTORE_TOPIC", "_schemas")
+            .with_env_var("SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR", "1")
+            .start(),
+    )
+    .await
+    .map_err(|_| io::Error::other("the schema registry did not start in time"))??;
+    Ok(registry)
 }
 
 async fn start_connector(

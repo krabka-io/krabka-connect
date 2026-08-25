@@ -27,12 +27,12 @@ async-trait = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 crabka-connect = { version = "0.4.0", path = "../connect" }
-crabka-ids = { version = "0.4.0", path = "../ids" }
-crabka-client-core = { version = "0.4.0", path = "../client-core" }
-crabka-client-consumer = { version = "0.4.0", path = "../client-consumer" }
-crabka-client-producer = { version = "0.4.0", path = "../client-producer" }
-crabka-client-admin = { version = "0.4.0", path = "../client-admin" }
-crabka-logfmt = { version = "0.4.0", path = "../logfmt" }
+crabka-ids = { workspace = true }
+crabka-client-core = { workspace = true }
+crabka-client-consumer = { workspace = true }
+crabka-client-producer = { workspace = true }
+crabka-client-admin = { workspace = true }
+crabka-logfmt = { workspace = true }
 crabka-security = { workspace = true }
 crabka-units = { workspace = true }
 derive_more = { workspace = true }
@@ -51,4 +51,4 @@ tracing-subscriber = { workspace = true }
 [dev-dependencies]
 mutants = { workspace = true }
 tempfile = { workspace = true }
-crabka-broker = { path = "../broker", features = ["test-helpers"] }
+crabka-broker = { workspace = true, features = ["test-helpers"] }

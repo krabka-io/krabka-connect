@@ -27,8 +27,8 @@ async-trait = { workspace = true }
 axum = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
-crabka-client-core = { version = "0.4.0", path = "../client-core" }
-crabka-client-producer = { version = "0.4.0", path = "../client-producer" }
+crabka-client-core = { workspace = true }
+crabka-client-producer = { workspace = true }
 crabka-connect = { version = "0.4.0", path = "../connect" }
 crabka-connect-postgres = { version = "0.4.0", path = "../connect-postgres" }
 crabka-replicator = { version = "0.4.0", path = "../replicator" }
@@ -45,9 +45,8 @@ tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 assert2 = { workspace = true }
-crabka-broker = { version = "0.4.0", path = "../broker", features = ["test-helpers"] }
-crabka-client-consumer = { version = "0.4.0", path = "../client-consumer" }
-crabka-schema-registry = { version = "0.4.0", path = "../schema-registry" }
+crabka-broker = { workspace = true, features = ["test-helpers"] }
+crabka-client-consumer = { workspace = true }
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
 tokio-postgres = { workspace = true }
