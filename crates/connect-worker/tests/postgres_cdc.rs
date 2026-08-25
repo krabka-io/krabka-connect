@@ -227,9 +227,14 @@ async fn start_registry(bootstrap: &str) -> TestResult<ContainerAsync<GenericIma
     let registry = timeout(
         CONTAINER_START_TIMEOUT,
         GenericImage::new("mirror.gcr.io/confluentinc/cp-schema-registry", "7.7.1")
-            .with_wait_for(WaitFor::message_on_stdout("Server started, listening for requests"))
+            .with_wait_for(WaitFor::message_on_stdout(
+                "Server started, listening for requests",
+            ))
             .with_env_var("SCHEMA_REGISTRY_HOST_NAME", "localhost")
-            .with_env_var("SCHEMA_REGISTRY_LISTENERS", format!("http://0.0.0.0:{REGISTRY_PORT}"))
+            .with_env_var(
+                "SCHEMA_REGISTRY_LISTENERS",
+                format!("http://0.0.0.0:{REGISTRY_PORT}"),
+            )
             .with_env_var(
                 "SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS",
                 format!("PLAINTEXT://{bootstrap}"),

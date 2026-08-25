@@ -14,15 +14,15 @@ crate_binary(
 )
 
 crate_tests(
-    lib = "replicator",
+    # mm2_golden_jvm embeds its golden vectors with `include_str!`, which the
+    # compiler reads while building the test rather than when running it.
+    compile_data = ["tests/fixtures/mm2_serde_golden.json"],
     # cli_smoke launches the binary through `env!("CARGO_BIN_EXE_...")`. Cargo
     # defines that for a bin target in the same crate; under Bazel it exists
     # only when the binary is a declared input, and it is set on the compile
     # action, so the test does not build without it.
     data = [":crabka-replicator"],
-    # mm2_golden_jvm embeds its golden vectors with `include_str!`, which the
-    # compiler reads while building the test rather than when running it.
-    compile_data = ["tests/fixtures/mm2_serde_golden.json"],
+    lib = "replicator",
     mutants_jobs = 1,
     mutants_shards = 12,
     mutants_timeout = "eternal",

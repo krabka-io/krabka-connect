@@ -131,6 +131,7 @@ crate.from_cargo(
     cargo_toml = "//tools/mutants:Cargo.toml",
     platform_triples = PLATFORM_TRIPLES,
 )
+
 # ---------------------------------------------------------------------------
 # Sibling crates live inside their repositories' Cargo workspaces, so a git
 # checkout puts each one under `crates/<name>` rather than at the root.
@@ -194,7 +195,6 @@ crate.annotation(
     strip_prefix = "crates/protocol",
     workspace_cargo_toml = "Cargo.toml",
 )
-
 crate.annotation(
     crate = "cargo-mutants",
     gen_binaries = ["cargo-mutants"],

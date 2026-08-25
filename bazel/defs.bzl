@@ -298,4 +298,3 @@ def crate_tests(
             # through a set, so asking for both at once dedupes them.
             deps = all_crate_deps(normal = True, normal_dev = True) + [":" + lib],
         )
-
