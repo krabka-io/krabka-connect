@@ -1,0 +1,168 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Nightly, 05:00 UTC: the full container run and the mutation sweep.
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  # The Aspect CLI uploads test logs and BEP through the Actions artifact
+  # API, which GitHub gates behind an OIDC token it only mints for jobs
+  # holding this. Without it those uploads are skipped and the run says so
+  # on every job.
+  id-token: write
+# Cancel superseded PR runs; let pushes to main run to completion.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+jobs:
+  # Build, test, lint and format. The Aspect CLI narrows each of these to what
+  # the change actually touched; `bazel build|test //...` is the equivalent for
+  # anyone without the CLI, and is what the nightly job runs.
+  ci:
+    name: build · test · lint · format
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Change detection needs the merge base, not just the tip.
+          fetch-depth: 0
+      - uses: aspect-build/setup-aspect@2306377a61c45954ab2df7c7311698b109364352 # v2026.26.9
+        with:
+          aspect-api-token: ${{ secrets.ASPECT_API_TOKEN }}
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+      # `--severity` defaults to `auto`, which the CLI resolves to `fail` on CI
+      # and `info` off it -- so this gates here and only reports locally.
+      - name: format
+        run: aspect format
+      # `aspect lint` narrows to the targets a change touched and annotates the
+      # pull request. It reads the `rules_lint_machine` output group, which is
+      # why the clippy aspect comes from aspect_rules_lint_rust rather than from
+      # @rules_rust -- see //tools/lint/linters.bzl. `bazel test //...` gates on
+      # the same aspect through the `*_clippy` targets, for anyone without the
+      # CLI. The aspect is named here rather than left to the `build:lint`
+      # bazelrc config, which `aspect lint` does not read.
+      - name: lint
+        run: aspect lint --aspect=//tools/lint:linters.bzl%clippy
+      - name: build
+        run: aspect build //...
+      - name: test
+        run: aspect test //...
+  # LCOV over the first-party crates. Separate from `ci` because instrumented
+  # binaries are a different build, so sharing that job's cache would only
+  # evict it.
+  coverage:
+    name: coverage
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aspect-build/setup-aspect@2306377a61c45954ab2df7c7311698b109364352 # v2026.26.9
+        with:
+          aspect-api-token: ${{ secrets.ASPECT_API_TOKEN }}
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-coverage
+          repository-cache: true
+      - run: bazel coverage //crates/...
+      - uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: bazel-out/_coverage/_coverage_report.dat
+          disable_search: true
+          fail_ci_if_error: false
+  # rustdoc for every crate, kept as an artifact. The `ci` job already builds
+  # these -- a `rust_doc` per crate is an ordinary target -- so this exists to
+  # publish the output, and to keep rendering the whole set even when `aspect
+  # build` narrowed to the crates a change touched.
+  docs:
+    name: docgen
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aspect-build/setup-aspect@2306377a61c45954ab2df7c7311698b109364352 # v2026.26.9
+        with:
+          aspect-api-token: ${{ secrets.ASPECT_API_TOKEN }}
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-docs
+          repository-cache: true
+      - run: bazel build $(bazel query 'kind("rust_doc rule", //crates/...)')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustdoc
+          path: bazel-bin/crates/**/*.rustdoc
+          if-no-files-found: error
+  # A mutation sweep rebuilds and re-runs a crate's unit tests once per mutant,
+  # so it is far too slow to gate a pull request.
+  #
+  # One job per crate, so each is bounded on its own and reports its own
+  # result, and the wall clock is the slowest crate rather than the sum. Two
+  # things this shape protects against, both learned the hard way in
+  # krabka-broker: a sweep that overruns inside one shared job says nothing
+  # about which crate was responsible, and a shard that overruns reports
+  # nothing at all rather than reporting a failure -- the totals line
+  # (caught + missed + unviable == total) is the only place that shows.
+  #
+  # `continue-on-error`: survivors are the expected state, not an exception --
+  # `cargo_mutants_test` runs only `#[cfg(test)]` unit tests, so every mutant the
+  # `tests/*.rs` suites would have killed is reported as one. The job exists to
+  # produce a list to read. Make it blocking once the score is worth defending.
+  mutants-select:
+    name: select mutants targets
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      crates: ${{ steps.select.outputs.crates }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aspect-build/setup-aspect@2306377a61c45954ab2df7c7311698b109364352 # v2026.26.9
+        with:
+          aspect-api-token: ${{ secrets.ASPECT_API_TOKEN }}
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-mutants
+          repository-cache: true
+      - id: select
+        run: |
+          set -euo pipefail
+          # Every mutant rebuilds its crate, so the budget follows crate size.
+          # promql, observability and traces are 40k lines or more; the rest are
+          # a fraction of that.
+          crates="$(
+            bazel query 'kind("cargo_mutants_test rule", //crates/...)' |
+              jq -R -s -c 'split("\n") | map(select(length > 0)) |
+                map({target: ., name: (. | split("/")[3] | split(":")[0])}) |
+                map(. + {minutes: (if (["promql","observability","traces"] | index(.name)) then 180 else 60 end)})'
+          )"
+          echo "crates=${crates}" >>"${GITHUB_OUTPUT}"
+          echo "Selected: ${crates}"
+  mutants:
+    name: mutants · ${{ matrix.crate.name }}
+    needs: mutants-select
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    # A bound, not an estimate. A crate that cannot finish inside it is saying
+    # its shard count is too low, and that is worth being told.
+    timeout-minutes: ${{ matrix.crate.minutes }}
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: ${{ fromJSON(needs.mutants-select.outputs.crates) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aspect-build/setup-aspect@2306377a61c45954ab2df7c7311698b109364352 # v2026.26.9
+        with:
+          aspect-api-token: ${{ secrets.ASPECT_API_TOKEN }}
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-mutants
+          repository-cache: true
+      - run: bazel test ${{ matrix.crate.target }}
