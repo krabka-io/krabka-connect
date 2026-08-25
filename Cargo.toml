@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
+# tools/mutants pins cargo-mutants from its own lockfile so the sweep tool is
+# versioned independently of what the crates under test depend on. It is not a
+# member: cargo refuses a manifest that sits under a workspace root without
+# belonging to it.
+exclude = ["tools/mutants"]
 
 [workspace.package]
 version = "0.4.0"

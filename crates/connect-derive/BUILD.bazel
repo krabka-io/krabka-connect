@@ -1,0 +1,27 @@
+load("//bazel:defs.bzl", "crate_proc_macro", "crate_tests")
+
+package(default_visibility = ["//visibility:public"])
+
+# Consumed by `crate.from_cargo` (see //MODULE.bazel).
+exports_files(["Cargo.toml"])
+
+crate_proc_macro(name = "connect-derive")
+
+crate_tests(
+    lib = "connect-derive",
+    # Both suites are Cargo-native by construction and stay a Cargo-side gate.
+    #
+    # `derive` drives trybuild, which compiles fixtures and asserts on the
+    # compiler's error text; `renamed_dependency` shells out to cargo to build a
+    # generated crate under `target/`. Each locates its inputs through
+    # `env!("CARGO_MANIFEST_DIR")`, which bakes an absolute path into the test
+    # binary -- the same sources would produce different bytes on different
+    # machines, and the sandbox rejects it outright.
+    manual = [
+        "derive",
+        "renamed_dependency",
+    ],
+    mutants_jobs = 1,
+    mutants_shards = 2,
+    mutants_timeout = "eternal",
+)

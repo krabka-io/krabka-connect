@@ -1,0 +1,41 @@
+# cargo-mutants configuration — https://mutants.rs
+#
+# Checked in so `cargo mutants` runs out of the box, locally and in CI, with the
+# same runner and exclusions used everywhere else. Bazel reaches it through
+# `--@rules_rs_mutants//mutants:config` in //.bazelrc; without that the sweep
+# enumerates from a synthetic workspace where this file is not in scope, and the
+# exclusions below silently do not exclude.
+
+# Tests run under nextest in every other job, so point cargo-mutants at the same
+# runner. nextest fails fast by default, which is what is wanted when killing
+# mutants.
+test_tool = "nextest"
+profile = "mutants"
+
+# A surviving mutant is often only caught by the slower in-process suites under
+# each crate's tests/ dir. Give every mutant run a generous timeout relative to
+# the unmutated baseline so a legitimately-slower-but-correct run is not
+# misreported as a timeout survivor, with a high floor for the heavier suites.
+timeout_multiplier = 5.0
+minimum_test_timeout = 120
+
+exclude_globs = [
+    # Entrypoint and serve-loop glue: no offline signal.
+    "crates/connect-worker/src/main.rs",
+    "crates/replicator/src/main.rs",
+    # `TokioPgCatalog` is the live-PostgreSQL adapter behind connect-postgres'
+    # `PgCatalog` seam: every method runs one query and extracts opaque
+    # `tokio_postgres::Row` fields -- a `Row` cannot be constructed in a test --
+    # delegating every decision back to the pure helpers in source.rs. The logic
+    # it feeds is mutation-tested via `source::catalog_tests`.
+    "crates/connect-postgres/src/catalog.rs",
+]
+
+# Individual mutants that survive for a stated reason rather than for want of a
+# test. Each was checked by hand before it was written down.
+exclude_re = [
+    "connect-postgres/src/offset\\.rs.*replace \\| with \\^ in <impl FromStr for PgLsn>::from_str",
+    "connect-postgres/src/source\\.rs.*replace && with \\|\\| in <impl Source<Bytes, Bytes> for PostgresWalSource>::poll",
+    "replicator/src/admin_util\\.rs.*replace >= with < in read_all",
+    "replicator/src/admin_util\\.rs.*replace \\+= with \\*= in read_all",
+]

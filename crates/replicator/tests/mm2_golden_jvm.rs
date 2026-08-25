@@ -33,13 +33,13 @@ use crabka_replicator::{
 
 /// Load and hex-decode one named golden vector from the committed fixture.
 fn golden(name: &str) -> Vec<u8> {
-    let raw = std::fs::read_to_string(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/mm2_serde_golden.json"
-    ))
-    .expect("read mm2_serde_golden.json");
+    // Embedded rather than read through `CARGO_MANIFEST_DIR`: that resolves to
+    // an absolute build path, which differs between machines and which a
+    // sandboxed build rejects outright. `include_str!` is relative to this
+    // file, so the same bytes are found either way.
+    let raw = include_str!("fixtures/mm2_serde_golden.json");
     let map: HashMap<String, String> =
-        serde_json::from_str(&raw).expect("parse mm2_serde_golden.json");
+        serde_json::from_str(raw).expect("parse mm2_serde_golden.json");
     let hex = map
         .get(name)
         .unwrap_or_else(|| panic!("no golden case {name}"));

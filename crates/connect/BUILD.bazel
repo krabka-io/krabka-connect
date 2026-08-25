@@ -1,0 +1,19 @@
+load("//bazel:defs.bzl", "crate_library", "crate_tests")
+
+package(default_visibility = ["//visibility:public"])
+
+# Consumed by `crate.from_cargo` (see //MODULE.bazel).
+exports_files(["Cargo.toml"])
+
+crate_library(name = "connect")
+
+crate_tests(
+    lib = "connect",
+    # One cargo job per shard: Bazel already runs the shards concurrently, so a
+    # higher number multiplies out to shards x jobs concurrent cargo builds.
+    mutants_jobs = 1,
+    mutants_shards = 8,
+    # `eternal` is the largest category Bazel offers but it is 3600s, not
+    # unlimited. Going past an hour needs --test_timeout on the command line.
+    mutants_timeout = "eternal",
+)

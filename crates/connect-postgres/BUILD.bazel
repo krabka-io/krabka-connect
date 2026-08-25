@@ -1,0 +1,15 @@
+load("//bazel:defs.bzl", "crate_library", "crate_tests")
+
+package(default_visibility = ["//visibility:public"])
+
+# Consumed by `crate.from_cargo` (see //MODULE.bazel).
+exports_files(["Cargo.toml"])
+
+crate_library(name = "connect-postgres")
+
+crate_tests(
+    lib = "connect-postgres",
+    mutants_jobs = 1,
+    mutants_shards = 8,
+    mutants_timeout = "eternal",
+)

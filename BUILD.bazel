@@ -1,0 +1,36 @@
+"""Root package: the public Crabka Connect surface."""
+
+package(default_visibility = ["//visibility:public"])
+
+# Cargo.lock/Cargo.toml are consumed by `crate.from_cargo` (see //MODULE.bazel);
+# clippy.toml by the lint aspect in //tools/lint; .cargo/mutants.toml by the
+# mutation sweep, via `--@rules_rs_mutants//mutants:config` in //.bazelrc.
+exports_files([
+    ".cargo/mutants.toml",
+    "Cargo.lock",
+    "Cargo.toml",
+    "clippy.toml",
+])
+
+# The connector framework every connector builds on.
+alias(
+    name = "connect",
+    actual = "//crates/connect",
+)
+
+# The Postgres logical-decoding source.
+alias(
+    name = "connect-postgres",
+    actual = "//crates/connect-postgres",
+)
+
+# The binaries this repository ships.
+alias(
+    name = "connect-worker",
+    actual = "//crates/connect-worker:crabka-connect-worker",
+)
+
+alias(
+    name = "replicator",
+    actual = "//crates/replicator:crabka-replicator",
+)
