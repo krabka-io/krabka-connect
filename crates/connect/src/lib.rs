@@ -1,4 +1,4 @@
-//! Connector-framework SPI for Crabka.
+//! Connector-framework SPI for Krabka.
 //!
 //! This crate defines the keystone traits that every connector builds on, that
 //! is, every CDC source and every telemetry sink. It also defines the converter
@@ -17,7 +17,7 @@
 //! - [`Converter`] bridges a connector's typed payload `T` to and from wire
 //!   [`bytes::Bytes`]. [`ByteIdentity`] is a byte-for-byte passthrough;
 //!   [`SchemaConverter`] wraps the Confluent schema-registry serdes from
-//!   `crabka-schema-serde`.
+//!   `krabka-schema-serde`.
 //!
 //! - [`ConnectorRuntime`] is the embeddable, single-process driver that owns a
 //!   `Source` and `Sink` pair and pipes records between them. It polls, applies
@@ -48,10 +48,10 @@ pub use config::{
     SecretResolutionError, SecretResolver, SecretString,
 };
 pub use convert::{ByteIdentity, Converter, SchemaConverter};
-#[cfg(feature = "derive")]
-pub use crabka_connect_derive::ConnectorConfig;
 pub use error::ConnectError;
 pub use ids::{PartitionMap, PositionMap};
+#[cfg(feature = "derive")]
+pub use krabka_connect_derive::ConnectorConfig;
 pub use record::{ConnectRecord, Header, OffsetMap, OffsetValue, SourceOffset};
 pub use runtime::{
     CheckpointStore, ConnectorHandle, ConnectorRuntime, HasSink, HasSource,

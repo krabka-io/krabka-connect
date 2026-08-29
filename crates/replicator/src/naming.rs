@@ -4,7 +4,7 @@ use crate::config::NamingPolicy;
 
 /// Header key that every produced record carries with the origin cluster alias.
 /// The identity-naming loop-guard uses it, and it is also useful for provenance.
-pub const PROVENANCE_HEADER: &str = "__crabka_origin";
+pub const PROVENANCE_HEADER: &str = "__krabka_origin";
 
 /// Maps source topic names to target topic names and enforces loop-prevention
 /// rules for active/active replication.

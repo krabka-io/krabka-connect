@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use crabka_schema_serde::{RegistryClient, SchemaKind, wire::encode_protobuf};
+use krabka_schema_serde::{RegistryClient, SchemaKind, wire::encode_protobuf};
 use prost::Message as _;
 use prost_reflect::{
     DescriptorPool, DynamicMessage, MessageDescriptor, Value,
@@ -16,16 +16,16 @@ use crate::{
 
 const KEY_MESSAGE_INDEX: &[i32] = &[1];
 const VALUE_MESSAGE_INDEX: &[i32] = &[2];
-const PACKAGE: &str = "crabka.connect.postgres";
+const PACKAGE: &str = "krabka.connect.postgres";
 const COLUMN_VALUE: &str = "ColumnValue";
 const ENTITY_KEY: &str = "EntityKey";
 const ENTITY_DIFFERENCE: &str = "EntityDifference";
-const KEY_SUBJECT: &str = "crabka-connect-postgres-key";
-const VALUE_SUBJECT: &str = "crabka-connect-postgres-value";
-const KEY_MESSAGE_TYPE: &str = "crabka.connect.postgres.EntityKey";
-const VALUE_MESSAGE_TYPE: &str = "crabka.connect.postgres.EntityDifference";
+const KEY_SUBJECT: &str = "krabka-connect-postgres-key";
+const VALUE_SUBJECT: &str = "krabka-connect-postgres-value";
+const KEY_MESSAGE_TYPE: &str = "krabka.connect.postgres.EntityKey";
+const VALUE_MESSAGE_TYPE: &str = "krabka.connect.postgres.EntityDifference";
 const PROTO_SCHEMA: &str = r#"syntax = "proto3";
-package crabka.connect.postgres;
+package krabka.connect.postgres;
 
 message ColumnValue {
   string name = 1;
@@ -219,7 +219,7 @@ impl PostgresProtoEncoder {
 fn schema_descriptor_set() -> FileDescriptorSet {
     FileDescriptorSet {
         file: vec![FileDescriptorProto {
-            name: Some("crabka/connect/postgres/cdc.proto".to_owned()),
+            name: Some("krabka/connect/postgres/cdc.proto".to_owned()),
             package: Some(PACKAGE.to_owned()),
             syntax: Some("proto3".to_owned()),
             message_type: vec![
@@ -370,7 +370,7 @@ fn registry_error(error: impl std::fmt::Display) -> PostgresConnectError {
 #[cfg(test)]
 mod tests {
     use bytes::Bytes;
-    use crabka_schema_serde::wire::decode_protobuf;
+    use krabka_schema_serde::wire::decode_protobuf;
     use prost_reflect::{DescriptorPool, DynamicMessage, Value};
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
@@ -500,8 +500,8 @@ mod tests {
     async fn registry_allocates_ids_used_by_key_and_value_frames() {
         let server = MockServer::start().await;
         for (subject, message_type, id) in [
-            ("crabka-connect-postgres-key", KEY_MESSAGE_TYPE, 73),
-            ("crabka-connect-postgres-value", VALUE_MESSAGE_TYPE, 91),
+            ("krabka-connect-postgres-key", KEY_MESSAGE_TYPE, 73),
+            ("krabka-connect-postgres-value", VALUE_MESSAGE_TYPE, 91),
         ] {
             Mock::given(method("POST"))
                 .and(path(format!("/subjects/{subject}/versions")))

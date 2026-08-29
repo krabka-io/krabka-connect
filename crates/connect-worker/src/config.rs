@@ -3,15 +3,15 @@
 use std::{fmt::Write as _, net::SocketAddr, path::PathBuf, str::FromStr, time::Duration};
 
 use clap::Parser;
-use crabka_client_core::{
+use krabka_client_core::{
     ClientFrameMax, ConnectionDispatchQueueCapacity,
     security::{ClientSecurity, SaslCredentials, TlsConnectorConfig},
 };
-use crabka_connect::SecretString;
-use crabka_connect_postgres::PostgresSourceConfig;
-use crabka_replicator::config::ReplicationFactor;
-use crabka_security::{ListenerProtocol, SaslMechanism};
-use crabka_units::{ByteSize, convert::ByteSizeExt as _};
+use krabka_connect::SecretString;
+use krabka_connect_postgres::PostgresSourceConfig;
+use krabka_replicator::config::ReplicationFactor;
+use krabka_security::{ListenerProtocol, SaslMechanism};
+use krabka_units::{ByteSize, convert::ByteSizeExt as _};
 use sha2::{Digest as _, Sha256};
 
 /// Kafka listener protocol used by the worker.
@@ -82,92 +82,92 @@ impl FromStr for BrokerSaslMechanism {
 
 /// Complete configuration for one managed Postgres source connector.
 #[derive(Clone, Parser)]
-#[command(name = "crabka-connect-worker", version, about)]
+#[command(name = "krabka-connect-worker", version, about)]
 pub struct WorkerConfig {
     /// Stable connector ID and checkpoint key.
-    #[arg(long, env = "CRABKA_CONNECTOR_ID", value_parser = parse_non_empty)]
+    #[arg(long, env = "KRABKA_CONNECTOR_ID", value_parser = parse_non_empty)]
     pub connector_id: String,
     /// Kafka bootstrap address.
-    #[arg(long, env = "CRABKA_KAFKA_BOOTSTRAP", value_parser = parse_non_empty)]
+    #[arg(long, env = "KRABKA_KAFKA_BOOTSTRAP", value_parser = parse_non_empty)]
     pub kafka_bootstrap: String,
     /// Confluent-compatible Schema Registry base URL.
-    #[arg(long, env = "CRABKA_SCHEMA_REGISTRY_URL", value_parser = parse_non_empty)]
+    #[arg(long, env = "KRABKA_SCHEMA_REGISTRY_URL", value_parser = parse_non_empty)]
     pub schema_registry_url: String,
     /// Replicas used when the worker creates data and checkpoint topics.
-    #[arg(long, env = "CRABKA_CONNECT_REPLICATION_FACTOR", default_value = "1")]
+    #[arg(long, env = "KRABKA_CONNECT_REPLICATION_FACTOR", default_value = "1")]
     pub replication_factor: ReplicationFactor,
     /// `PostgreSQL` connection URL. Formatting is always redacted.
-    #[arg(long, env = "CRABKA_POSTGRES_URL", value_parser = parse_secret)]
+    #[arg(long, env = "KRABKA_POSTGRES_URL", value_parser = parse_secret)]
     pub postgres_url: SecretString,
     /// `PostgreSQL` logical replication slot.
-    #[arg(long, env = "CRABKA_POSTGRES_SLOT", value_parser = parse_non_empty)]
+    #[arg(long, env = "KRABKA_POSTGRES_SLOT", value_parser = parse_non_empty)]
     pub postgres_slot: String,
     /// `PostgreSQL` publication.
     #[arg(
         long,
-        env = "CRABKA_POSTGRES_PUBLICATION",
-        default_value = "crabka_connect"
+        env = "KRABKA_POSTGRES_PUBLICATION",
+        default_value = "krabka_connect"
     )]
     pub postgres_publication: String,
     /// `PostgreSQL` schema containing the selected tables.
-    #[arg(long, env = "CRABKA_POSTGRES_SCHEMA", default_value = "public")]
+    #[arg(long, env = "KRABKA_POSTGRES_SCHEMA", default_value = "public")]
     pub postgres_schema: String,
     /// Comma-delimited table names captured from the publication.
     #[arg(
         long,
-        env = "CRABKA_POSTGRES_TABLES",
+        env = "KRABKA_POSTGRES_TABLES",
         value_delimiter = ',',
         required = true
     )]
     pub postgres_tables: Vec<String>,
     /// Prefix prepended to source topics with a dot separator; empty disables it.
-    #[arg(long, env = "CRABKA_TOPIC_PREFIX", default_value = "db")]
+    #[arg(long, env = "KRABKA_TOPIC_PREFIX", default_value = "db")]
     pub topic_prefix: String,
     /// Maximum records buffered before a Kafka durability barrier.
-    #[arg(long, env = "CRABKA_CONNECT_BATCH_SIZE", default_value_t = 500, value_parser = parse_positive_usize)]
+    #[arg(long, env = "KRABKA_CONNECT_BATCH_SIZE", default_value_t = 500, value_parser = parse_positive_usize)]
     pub batch_size: usize,
     /// Maximum time between Kafka durability barriers, in milliseconds.
-    #[arg(long, env = "CRABKA_CONNECT_COMMIT_INTERVAL_MS", default_value_t = 5_000, value_parser = clap::value_parser!(u64).range(1..))]
+    #[arg(long, env = "KRABKA_CONNECT_COMMIT_INTERVAL_MS", default_value_t = 5_000, value_parser = clap::value_parser!(u64).range(1..))]
     pub commit_interval_ms: u64,
     /// Delay after `PostgreSQL` reports no new changes, in milliseconds.
-    #[arg(long, env = "CRABKA_CONNECT_POLL_BACKOFF_MS", default_value_t = 100, value_parser = clap::value_parser!(u64).range(1..))]
+    #[arg(long, env = "KRABKA_CONNECT_POLL_BACKOFF_MS", default_value_t = 100, value_parser = clap::value_parser!(u64).range(1..))]
     pub poll_backoff_ms: u64,
     /// Address serving `/live`, `/ready`, and `/metrics`.
     #[arg(
         long,
-        env = "CRABKA_CONNECT_HEALTH_LISTEN",
+        env = "KRABKA_CONNECT_HEALTH_LISTEN",
         default_value = "0.0.0.0:8080"
     )]
     pub health_listen: SocketAddr,
     /// Capacity of each Kafka client's pending request dispatch queue.
-    #[arg(long, env = "CRABKA_CLIENT_DISPATCH_QUEUE_CAPACITY", default_value_t = 64, value_parser = parse_positive_usize)]
+    #[arg(long, env = "KRABKA_CLIENT_DISPATCH_QUEUE_CAPACITY", default_value_t = 64, value_parser = parse_positive_usize)]
     pub client_dispatch_queue_capacity: usize,
     /// Maximum accepted Kafka response frame size in bytes.
-    #[arg(long, env = "CRABKA_CLIENT_FRAME_MAX_BYTES", default_value_t = 100 * 1024 * 1024, value_parser = clap::value_parser!(u64).range(1..))]
+    #[arg(long, env = "KRABKA_CLIENT_FRAME_MAX_BYTES", default_value_t = 100 * 1024 * 1024, value_parser = clap::value_parser!(u64).range(1..))]
     pub client_frame_max_bytes: u64,
     /// Broker security protocol.
-    #[arg(long, env = "CRABKA_BROKER_PROTOCOL", default_value = "PLAINTEXT")]
+    #[arg(long, env = "KRABKA_BROKER_PROTOCOL", default_value = "PLAINTEXT")]
     pub broker_protocol: BrokerProtocol,
     /// PEM file containing broker CA certificates.
-    #[arg(long, env = "CRABKA_BROKER_CA_PATH")]
+    #[arg(long, env = "KRABKA_BROKER_CA_PATH")]
     pub broker_ca_path: Option<PathBuf>,
     /// TLS SNI name used to verify the broker certificate.
-    #[arg(long, env = "CRABKA_BROKER_SERVER_NAME")]
+    #[arg(long, env = "KRABKA_BROKER_SERVER_NAME")]
     pub broker_server_name: Option<String>,
     /// PEM client certificate chain for mTLS.
-    #[arg(long, env = "CRABKA_BROKER_CERT_PATH")]
+    #[arg(long, env = "KRABKA_BROKER_CERT_PATH")]
     pub broker_cert_path: Option<PathBuf>,
     /// PEM private key for mTLS.
-    #[arg(long, env = "CRABKA_BROKER_KEY_PATH")]
+    #[arg(long, env = "KRABKA_BROKER_KEY_PATH")]
     pub broker_key_path: Option<PathBuf>,
     /// SASL username.
-    #[arg(long, env = "CRABKA_BROKER_SASL_USERNAME")]
+    #[arg(long, env = "KRABKA_BROKER_SASL_USERNAME")]
     pub broker_sasl_username: Option<String>,
     /// SASL password. Formatting is always redacted.
-    #[arg(long, env = "CRABKA_BROKER_SASL_PASSWORD", value_parser = parse_secret)]
+    #[arg(long, env = "KRABKA_BROKER_SASL_PASSWORD", value_parser = parse_secret)]
     pub broker_sasl_password: Option<SecretString>,
     /// SASL PLAIN or SCRAM mechanism.
-    #[arg(long, env = "CRABKA_BROKER_SASL_MECHANISM")]
+    #[arg(long, env = "KRABKA_BROKER_SASL_MECHANISM")]
     pub broker_sasl_mechanism: Option<BrokerSaslMechanism>,
 }
 
@@ -375,7 +375,7 @@ mod tests {
 
     fn base_args() -> Vec<&'static str> {
         vec![
-            "crabka-connect-worker",
+            "krabka-connect-worker",
             "--connector-id=orders",
             "--kafka-bootstrap=localhost:9092",
             "--schema-registry-url=http://localhost:8081",

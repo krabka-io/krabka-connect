@@ -1,5 +1,5 @@
 //! Deny-wins residency gate. A topic-flow is permitted unless a matching policy
-//! denies it. The semantics mirror Crabka's ACL authorizer: DENY beats ALLOW.
+//! denies it. The semantics mirror Krabka's ACL authorizer: DENY beats ALLOW.
 //! An `allow_zones` list means "only these zones are allowed", which is
 //! deny-by-default for the matched topic.
 

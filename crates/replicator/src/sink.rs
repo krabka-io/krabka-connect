@@ -8,11 +8,11 @@ use std::{
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use crabka_client_producer::{
+use krabka_client_producer::{
     Acks, Header, OwnedTransaction, Producer, ProducerError, ProducerRecord, RecordMetadata,
 };
-use crabka_connect::{ConnectError, ConnectRecord, OffsetValue, Sink, SourceOffset};
-use crabka_units::prelude::TimeExt as _;
+use krabka_connect::{ConnectError, ConnectRecord, OffsetValue, Sink, SourceOffset};
+use krabka_units::prelude::TimeExt as _;
 use tokio::sync::oneshot::Receiver;
 use tracing::warn;
 
@@ -57,7 +57,7 @@ pub struct SinkParams {
     /// Residency policies to enforce.
     pub policies: Vec<PolicyConfig>,
     /// Optional TLS/SASL security for the target cluster.
-    pub security: Option<crabka_client_core::security::ClientSecurity>,
+    pub security: Option<krabka_client_core::security::ClientSecurity>,
     /// Source partition count by source topic.
     pub source_partition_counts: BTreeMap<String, i32>,
 }
@@ -81,7 +81,7 @@ pub struct TargetSink {
     /// Bootstrap address of the target cluster, used for lazy topic creation.
     target_bootstrap: String,
     /// Security config retained for lazy topic creation calls.
-    security: Option<crabka_client_core::security::ClientSecurity>,
+    security: Option<krabka_client_core::security::ClientSecurity>,
     client_resource_policy: ClientResourcePolicy,
     runtime_policy: ReplicatorRuntimePolicy,
     source_partition_counts: BTreeMap<String, i32>,
@@ -327,10 +327,10 @@ async fn build_producer(
     bootstrap: &str,
     flow_name: &str,
     delivery: Delivery,
-    security: Option<crabka_client_core::security::ClientSecurity>,
+    security: Option<krabka_client_core::security::ClientSecurity>,
     client_resource_policy: ClientResourcePolicy,
     runtime_policy: &ReplicatorRuntimePolicy,
-) -> Result<Arc<Producer>, crabka_client_producer::ProducerError> {
+) -> Result<Arc<Producer>, krabka_client_producer::ProducerError> {
     let builder = Producer::builder()
         .bootstrap(bootstrap)
         .dispatch_queue_capacity(client_resource_policy.dispatch_queue_capacity.get())
@@ -350,7 +350,7 @@ async fn build_producer(
         (Delivery::ExactlyOnce, Some(security)) => {
             builder
                 .enable_idempotence(true)
-                .transactional_id(format!("crabka-replicator-{flow_name}"))
+                .transactional_id(format!("krabka-replicator-{flow_name}"))
                 .security(security)
                 .build()
                 .await?
@@ -358,7 +358,7 @@ async fn build_producer(
         (Delivery::ExactlyOnce, None) => {
             builder
                 .enable_idempotence(true)
-                .transactional_id(format!("crabka-replicator-{flow_name}"))
+                .transactional_id(format!("krabka-replicator-{flow_name}"))
                 .build()
                 .await?
         }
@@ -377,7 +377,7 @@ impl Sink<(), ReplicatedRecord> for TargetSink {
     ///
     /// The sink drops a record, and does not buffer it, when:
     /// - `value` is `None`, that is, a tombstone or no payload.
-    /// - The identity-naming loop-guard fires: the `__crabka_origin` header of
+    /// - The identity-naming loop-guard fires: the `__krabka_origin` header of
     ///   the record matches our own `source_alias`.
     /// - The residency gate blocks the topic for the zones of the target.
     #[tracing::instrument(
@@ -592,7 +592,7 @@ impl Sink<(), ReplicatedRecord> for TargetSink {
 #[cfg(test)]
 mod tests {
 
-    use crabka_connect::{CheckpointStore, Sink};
+    use krabka_connect::{CheckpointStore, Sink};
 
     use super::*;
     use crate::ids::{Offset, Timestamp};
@@ -600,7 +600,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn produces_renamed_and_records_offset_sync_but_blocks_denied() {
         let dir = tempfile::TempDir::new().unwrap();
-        let broker = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let broker = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             dir.path().to_path_buf(),
         ))
         .await
@@ -674,7 +674,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn identity_naming_loop_guard_skips_only_own_provenance() {
         let dir = tempfile::TempDir::new().unwrap();
-        let broker = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let broker = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             dir.path().to_path_buf(),
         ))
         .await
@@ -682,7 +682,7 @@ mod tests {
         let target = broker.listen_addr().to_string();
 
         // Identity naming (no rename) + permit-all residency. The loop-guard
-        // must skip ONLY a record whose `__crabka_origin` header equals our own
+        // must skip ONLY a record whose `__krabka_origin` header equals our own
         // source alias.
         let mut sink = TargetSink::start(SinkParams {
             target_bootstrap: target.clone(),
@@ -760,7 +760,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn exactly_once_abort_hides_data_sync_and_checkpoint_then_commit_reveals_all() {
         let dir = tempfile::TempDir::new().unwrap();
-        let broker = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let broker = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             dir.path().to_path_buf(),
         ))
         .await

@@ -1,6 +1,6 @@
 #![cfg(feature = "derive")]
 
-use crabka_connect::{
+use krabka_connect::{
     ConfigKind, ConnectorConfig, EnvSecretResolver, ResolveOptions, SecretString,
 };
 use serde_json::json;

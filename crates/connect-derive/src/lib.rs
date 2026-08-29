@@ -26,7 +26,7 @@ fn expand_connector_config(input: DeriveInput) -> syn::Result<proc_macro2::Token
     } = input;
     reject_generics(&generics)?;
 
-    let crate_path = resolve_crabka_connect_path(&attrs)?;
+    let crate_path = resolve_krabka_connect_path(&attrs)?;
     let fields = match data {
         Data::Struct(data) => match data.fields {
             Fields::Named(fields) => fields.named,
@@ -134,7 +134,7 @@ fn reject_generics(generics: &Generics) -> syn::Result<()> {
     ))
 }
 
-fn resolve_crabka_connect_path(attrs: &[Attribute]) -> syn::Result<proc_macro2::TokenStream> {
+fn resolve_krabka_connect_path(attrs: &[Attribute]) -> syn::Result<proc_macro2::TokenStream> {
     let mut override_path = None;
     for attr in attrs {
         if !attr.path().is_ident("config") {
@@ -157,12 +157,12 @@ fn resolve_crabka_connect_path(attrs: &[Attribute]) -> syn::Result<proc_macro2::
         return Ok(path);
     }
 
-    match crate_name("crabka-connect") {
+    match crate_name("krabka-connect") {
         Ok(FoundCrate::Name(name)) => {
             let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
             Ok(quote!(::#ident))
         }
-        Ok(FoundCrate::Itself) | Err(_) => Ok(quote!(::crabka_connect)),
+        Ok(FoundCrate::Itself) | Err(_) => Ok(quote!(::krabka_connect)),
     }
 }
 

@@ -3,7 +3,7 @@
 use std::{collections::BTreeMap, num::NonZeroUsize, str::FromStr};
 
 use clap::Args;
-use crabka_units::{Time, millis, secs};
+use krabka_units::{Time, millis, secs};
 use refined_type::rule::GreaterI16;
 use serde::{Deserialize, Serialize};
 
@@ -12,8 +12,8 @@ use crate::error::ReplicatorError;
 /// Kafka client resource policy owned by the replicator process.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ClientResourcePolicy {
-    pub dispatch_queue_capacity: crabka_client_core::ConnectionDispatchQueueCapacity,
-    pub frame_max: crabka_client_core::ClientFrameMax,
+    pub dispatch_queue_capacity: krabka_client_core::ConnectionDispatchQueueCapacity,
+    pub frame_max: krabka_client_core::ClientFrameMax,
 }
 
 type RefinedReplicationFactor = GreaterI16<0>;
@@ -57,53 +57,53 @@ impl FromStr for ReplicationFactor {
 /// Process-owned replicator runtime and topic policy.
 #[derive(Args, Debug, Clone, PartialEq)]
 pub struct ReplicatorRuntimePolicy {
-    #[arg(long, env = "CRABKA_REPLICATOR_TOPIC_CREATE_TIMEOUT", default_value = "10s", value_parser = crabka_units::parse::positive_time)]
+    #[arg(long, env = "KRABKA_REPLICATOR_TOPIC_CREATE_TIMEOUT", default_value = "10s", value_parser = krabka_units::parse::positive_time)]
     pub topic_create_timeout: Time,
-    #[arg(long, env = "CRABKA_REPLICATOR_SOURCE_POLL_TIMEOUT", default_value = "500ms", value_parser = crabka_units::parse::positive_time)]
+    #[arg(long, env = "KRABKA_REPLICATOR_SOURCE_POLL_TIMEOUT", default_value = "500ms", value_parser = krabka_units::parse::positive_time)]
     pub source_poll_timeout: Time,
-    #[arg(long, env = "CRABKA_REPLICATOR_INTERNAL_DRAIN_POLL_TIMEOUT", default_value = "500ms", value_parser = crabka_units::parse::positive_time)]
+    #[arg(long, env = "KRABKA_REPLICATOR_INTERNAL_DRAIN_POLL_TIMEOUT", default_value = "500ms", value_parser = krabka_units::parse::positive_time)]
     pub internal_drain_poll_timeout: Time,
     #[arg(
         long,
-        env = "CRABKA_REPLICATOR_INTERNAL_DRAIN_EMPTY_POLLS",
+        env = "KRABKA_REPLICATOR_INTERNAL_DRAIN_EMPTY_POLLS",
         default_value = "3"
     )]
     pub internal_drain_empty_polls: NonZeroUsize,
-    #[arg(long, env = "CRABKA_REPLICATOR_WORKER_BUILD_RETRY_BUDGET", default_value = "30s", value_parser = crabka_units::parse::positive_time)]
+    #[arg(long, env = "KRABKA_REPLICATOR_WORKER_BUILD_RETRY_BUDGET", default_value = "30s", value_parser = krabka_units::parse::positive_time)]
     pub worker_build_retry_budget: Time,
-    #[arg(long, env = "CRABKA_REPLICATOR_WORKER_BUILD_INITIAL_BACKOFF", default_value = "250ms", value_parser = crabka_units::parse::positive_time)]
+    #[arg(long, env = "KRABKA_REPLICATOR_WORKER_BUILD_INITIAL_BACKOFF", default_value = "250ms", value_parser = krabka_units::parse::positive_time)]
     pub worker_build_initial_backoff: Time,
-    #[arg(long, env = "CRABKA_REPLICATOR_WORKER_BUILD_MAX_BACKOFF", default_value = "8s", value_parser = crabka_units::parse::positive_time)]
+    #[arg(long, env = "KRABKA_REPLICATOR_WORKER_BUILD_MAX_BACKOFF", default_value = "8s", value_parser = krabka_units::parse::positive_time)]
     pub worker_build_max_backoff: Time,
-    #[arg(long, env = "CRABKA_REPLICATOR_CONNECT_COMMIT_INTERVAL", default_value = "500ms", value_parser = crabka_units::parse::positive_time)]
+    #[arg(long, env = "KRABKA_REPLICATOR_CONNECT_COMMIT_INTERVAL", default_value = "500ms", value_parser = krabka_units::parse::positive_time)]
     pub connect_commit_interval: Time,
     #[arg(
         long,
-        env = "CRABKA_REPLICATOR_CONNECT_MAX_BATCH_RECORDS",
+        env = "KRABKA_REPLICATOR_CONNECT_MAX_BATCH_RECORDS",
         default_value = "500"
     )]
     pub connect_max_batch_records: NonZeroUsize,
-    #[arg(long, env = "CRABKA_REPLICATOR_SUPERVISOR_INTERVAL", default_value = "3s", value_parser = crabka_units::parse::positive_time)]
+    #[arg(long, env = "KRABKA_REPLICATOR_SUPERVISOR_INTERVAL", default_value = "3s", value_parser = krabka_units::parse::positive_time)]
     pub supervisor_interval: Time,
-    #[arg(long, env = "CRABKA_REPLICATOR_HEARTBEAT_INTERVAL", default_value = "1s", value_parser = crabka_units::parse::positive_time)]
+    #[arg(long, env = "KRABKA_REPLICATOR_HEARTBEAT_INTERVAL", default_value = "1s", value_parser = krabka_units::parse::positive_time)]
     pub heartbeat_interval: Time,
-    #[arg(long, env = "CRABKA_REPLICATOR_CHECKPOINT_INTERVAL", default_value = "5s", value_parser = crabka_units::parse::positive_time)]
+    #[arg(long, env = "KRABKA_REPLICATOR_CHECKPOINT_INTERVAL", default_value = "5s", value_parser = krabka_units::parse::positive_time)]
     pub checkpoint_interval: Time,
-    #[arg(long, env = "CRABKA_REPLICATOR_CLIENT_DNS_TIMEOUT", default_value = "10s", value_parser = crabka_units::parse::positive_time)]
+    #[arg(long, env = "KRABKA_REPLICATOR_CLIENT_DNS_TIMEOUT", default_value = "10s", value_parser = krabka_units::parse::positive_time)]
     pub client_dns_timeout: Time,
-    #[arg(long, env = "CRABKA_REPLICATOR_CLIENT_CONNECT_TIMEOUT", default_value = "5s", value_parser = crabka_units::parse::positive_time)]
+    #[arg(long, env = "KRABKA_REPLICATOR_CLIENT_CONNECT_TIMEOUT", default_value = "5s", value_parser = krabka_units::parse::positive_time)]
     pub client_connect_timeout: Time,
-    #[arg(long, env = "CRABKA_REPLICATOR_CLIENT_REQUEST_TIMEOUT", default_value = "30s", value_parser = crabka_units::parse::positive_time)]
+    #[arg(long, env = "KRABKA_REPLICATOR_CLIENT_REQUEST_TIMEOUT", default_value = "30s", value_parser = krabka_units::parse::positive_time)]
     pub client_request_timeout: Time,
     #[arg(
         long,
-        env = "CRABKA_REPLICATOR_DATA_TOPIC_REPLICATION_FACTOR",
+        env = "KRABKA_REPLICATOR_DATA_TOPIC_REPLICATION_FACTOR",
         default_value = "1"
     )]
     pub data_topic_replication_factor: ReplicationFactor,
     #[arg(
         long,
-        env = "CRABKA_REPLICATOR_INTERNAL_TOPIC_REPLICATION_FACTOR",
+        env = "KRABKA_REPLICATOR_INTERNAL_TOPIC_REPLICATION_FACTOR",
         default_value = "1"
     )]
     pub internal_topic_replication_factor: ReplicationFactor,
@@ -122,7 +122,7 @@ impl ReplicatorRuntimePolicy {
         if self.worker_build_retry_budget < self.worker_build_initial_backoff {
             return Err("worker build retry budget is below initial backoff".to_owned());
         }
-        crabka_client_core::ClientDnsTimeout::new(self.client_dns_timeout)?;
+        krabka_client_core::ClientDnsTimeout::new(self.client_dns_timeout)?;
         Ok(())
     }
 }

@@ -4,9 +4,9 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use async_trait::async_trait;
-use crabka_client_consumer::{AutoOffsetReset, Consumer, IsolationLevel};
-use crabka_connect::{ConnectError, ConnectRecord, OffsetMap, OffsetValue, Source, SourceOffset};
-use crabka_units::prelude::Time;
+use krabka_client_consumer::{AutoOffsetReset, Consumer, IsolationLevel};
+use krabka_connect::{ConnectError, ConnectRecord, OffsetMap, OffsetValue, Source, SourceOffset};
+use krabka_units::prelude::Time;
 
 use crate::{
     config::{ClientResourcePolicy, Delivery, ReplicatorRuntimePolicy},
@@ -17,7 +17,7 @@ use crate::{
 /// A [`Source`] implementation backed by a Kafka consumer on the source cluster.
 ///
 /// This type wraps a [`Consumer`] and translates each
-/// [`crabka_client_consumer::ConsumerRecord`] into a [`ReplicatedRecord`]. That
+/// [`krabka_client_consumer::ConsumerRecord`] into a [`ReplicatedRecord`]. That
 /// record carries the full envelope of topic, partition, offset, timestamp, and
 /// headers next to the raw payload. The connect runtime receives the whole
 /// `ReplicatedRecord` value, including the source coordinates that offset-sync
@@ -70,7 +70,7 @@ impl SourceConsumer {
         bootstrap: &str,
         group_id: &str,
         topics: &[String],
-        security: Option<crabka_client_core::security::ClientSecurity>,
+        security: Option<krabka_client_core::security::ClientSecurity>,
     ) -> Result<Self, ConnectError> {
         Self::start_with_policy(
             bootstrap,
@@ -91,7 +91,7 @@ impl SourceConsumer {
         bootstrap: &str,
         group_id: &str,
         topics: &[String],
-        security: Option<crabka_client_core::security::ClientSecurity>,
+        security: Option<krabka_client_core::security::ClientSecurity>,
         client_resource_policy: ClientResourcePolicy,
     ) -> Result<Self, ConnectError> {
         Self::start_with_runtime_policy(
@@ -110,7 +110,7 @@ impl SourceConsumer {
         bootstrap: &str,
         group_id: &str,
         topics: &[String],
-        security: Option<crabka_client_core::security::ClientSecurity>,
+        security: Option<krabka_client_core::security::ClientSecurity>,
         client_resource_policy: ClientResourcePolicy,
         runtime_policy: &ReplicatorRuntimePolicy,
         delivery: Delivery,
@@ -218,7 +218,7 @@ impl Source<(), ReplicatedRecord> for SourceConsumer {
     /// `"<topic>-<partition>"` to [`OffsetValue::Long`]`(next_offset)`, the
     /// value that [`checkpoint`](Self::checkpoint) wrote as `last_consumed + 1`.
     /// This method decodes each key back into `(topic, partition)` and hands the
-    /// offset to the [`seek`](crabka_client_consumer::Consumer::seek) of the
+    /// offset to the [`seek`](krabka_client_consumer::Consumer::seek) of the
     /// consumer.
     ///
     /// The consumer holds each seek as *pending*. It materialises the seek at
@@ -299,14 +299,14 @@ impl Source<(), ReplicatedRecord> for SourceConsumer {
 #[cfg(test)]
 mod tests {
 
-    use crabka_connect::Source;
+    use krabka_connect::Source;
 
     use super::*;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn source_polls_records_with_topic_and_offset() {
         let dir = tempfile::TempDir::new().unwrap();
-        let broker = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let broker = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             dir.path().to_path_buf(),
         ))
         .await
@@ -318,7 +318,7 @@ mod tests {
 
         let mut src = SourceConsumer::start(
             &bootstrap,
-            "crabka-replicator-flow1",
+            "krabka-replicator-flow1",
             &["orders".to_string()],
             None,
         )
@@ -353,7 +353,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn close_takes_consumer_so_poll_fails_afterwards() {
         let dir = tempfile::TempDir::new().unwrap();
-        let broker = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let broker = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             dir.path().to_path_buf(),
         ))
         .await
@@ -364,7 +364,7 @@ mod tests {
 
         let mut src = SourceConsumer::start(
             &bootstrap,
-            "crabka-replicator-flow-close",
+            "krabka-replicator-flow-close",
             &["orders".to_string()],
             None,
         )

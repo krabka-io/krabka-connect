@@ -1,23 +1,23 @@
 [package]
-name = "crabka-replicator"
+name = "krabka-replicator"
 publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 rust-version.workspace = true
-description = "Cross-cluster geo-replication service for Crabka (MirrorMaker-2 equivalent)"
+description = "Cross-cluster geo-replication service for Krabka (MirrorMaker-2 equivalent)"
 repository = "https://github.com/robot-head/crabka"
 homepage = "https://github.com/robot-head/crabka"
-documentation = "https://docs.rs/crabka-replicator"
-keywords = ["kafka", "replication", "mirrormaker", "crabka"]
+documentation = "https://docs.rs/krabka-replicator"
+keywords = ["kafka", "replication", "mirrormaker", "krabka"]
 categories = ["network-programming"]
 
 [lints]
 workspace = true
 
 [[bin]]
-name = "crabka-replicator"
+name = "krabka-replicator"
 path = "src/main.rs"
 
 [dependencies]
@@ -26,15 +26,15 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
-crabka-connect = { version = "0.4.0", path = "../connect" }
-crabka-ids = { workspace = true }
-crabka-client-core = { workspace = true }
-crabka-client-consumer = { workspace = true }
-crabka-client-producer = { workspace = true }
-crabka-client-admin = { workspace = true }
-crabka-logfmt = { workspace = true }
-crabka-security = { workspace = true }
-crabka-units = { workspace = true }
+krabka-connect = { version = "0.4.0", path = "../connect" }
+krabka-ids = { workspace = true }
+krabka-client-core = { workspace = true }
+krabka-client-consumer = { workspace = true }
+krabka-client-producer = { workspace = true }
+krabka-client-admin = { workspace = true }
+krabka-logfmt = { workspace = true }
+krabka-security = { workspace = true }
+krabka-units = { workspace = true }
 derive_more = { workspace = true }
 qubit-clock = { workspace = true, features = ["tokio"] }
 regex = { workspace = true }
@@ -51,4 +51,4 @@ tracing-subscriber = { workspace = true }
 [dev-dependencies]
 mutants = { workspace = true }
 tempfile = { workspace = true }
-crabka-broker = { workspace = true, features = ["test-helpers"] }
+krabka-broker = { workspace = true, features = ["test-helpers"] }

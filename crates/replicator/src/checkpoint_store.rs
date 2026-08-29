@@ -7,12 +7,12 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use crabka_connect::{CheckpointStore, ConnectError, SourceOffset};
+use krabka_connect::{CheckpointStore, ConnectError, SourceOffset};
 
 use crate::config::{ClientResourcePolicy, ReplicatorRuntimePolicy};
 
 /// The internal compacted topic used to store replicator checkpoints.
-pub(crate) const STATE_TOPIC: &str = "crabka-replicator-offsets";
+pub(crate) const STATE_TOPIC: &str = "krabka-replicator-offsets";
 
 /// A [`CheckpointStore`] backed by a compacted internal Kafka topic on the
 /// target cluster.
@@ -22,11 +22,11 @@ pub(crate) const STATE_TOPIC: &str = "crabka-replicator-offsets";
 /// value for that key and recovers the exact partition offsets that the worker
 /// had reached.
 pub struct InternalTopicCheckpointStore {
-    producer: crabka_client_producer::Producer,
+    producer: krabka_client_producer::Producer,
     target_bootstrap: String,
     topic: String,
     key: String,
-    security: Option<crabka_client_core::security::ClientSecurity>,
+    security: Option<krabka_client_core::security::ClientSecurity>,
     client_resource_policy: ClientResourcePolicy,
     runtime_policy: ReplicatorRuntimePolicy,
     /// Exactly-once sinks persist this checkpoint in the same transaction as
@@ -46,7 +46,7 @@ impl InternalTopicCheckpointStore {
     pub async fn start(
         target_bootstrap: &str,
         flow_name: &str,
-        security: Option<crabka_client_core::security::ClientSecurity>,
+        security: Option<krabka_client_core::security::ClientSecurity>,
     ) -> Result<Self, ConnectError> {
         Self::start_with_policy(
             target_bootstrap,
@@ -66,7 +66,7 @@ impl InternalTopicCheckpointStore {
     pub async fn start_with_policy(
         target_bootstrap: &str,
         flow_name: &str,
-        security: Option<crabka_client_core::security::ClientSecurity>,
+        security: Option<krabka_client_core::security::ClientSecurity>,
         client_resource_policy: ClientResourcePolicy,
     ) -> Result<Self, ConnectError> {
         Self::start_with_runtime_policy(
@@ -82,7 +82,7 @@ impl InternalTopicCheckpointStore {
     pub(crate) async fn start_with_runtime_policy(
         target_bootstrap: &str,
         flow_name: &str,
-        security: Option<crabka_client_core::security::ClientSecurity>,
+        security: Option<krabka_client_core::security::ClientSecurity>,
         client_resource_policy: ClientResourcePolicy,
         runtime_policy: ReplicatorRuntimePolicy,
     ) -> Result<Self, ConnectError> {
@@ -96,12 +96,12 @@ impl InternalTopicCheckpointStore {
         .await
         .map_err(ConnectError::Offset)?;
 
-        let builder = crabka_client_producer::Producer::builder()
+        let builder = krabka_client_producer::Producer::builder()
             .bootstrap(target_bootstrap)
             .dispatch_queue_capacity(client_resource_policy.dispatch_queue_capacity.get())
             .frame_max(client_resource_policy.frame_max.size())
             .enable_idempotence(false)
-            .acks(crabka_client_producer::Acks::All);
+            .acks(krabka_client_producer::Acks::All);
 
         let producer = match security.clone() {
             Some(s) => builder.security(s).build().await,
@@ -144,7 +144,7 @@ impl CheckpointStore for InternalTopicCheckpointStore {
         let bytes = serde_json::to_vec(offset).map_err(|e| ConnectError::Offset(e.to_string()))?;
 
         self.producer
-            .send(crabka_client_producer::ProducerRecord {
+            .send(krabka_client_producer::ProducerRecord {
                 topic: self.topic.clone(),
                 partition: None,
                 key: Some(Bytes::copy_from_slice(self.key.as_bytes())),
@@ -191,14 +191,14 @@ impl CheckpointStore for InternalTopicCheckpointStore {
 mod tests {
     use std::collections::BTreeMap;
 
-    use crabka_connect::{CheckpointStore, OffsetValue, SourceOffset};
+    use krabka_connect::{CheckpointStore, OffsetValue, SourceOffset};
 
     use super::*;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn persists_and_reloads_position_from_target() {
         let dir = tempfile::TempDir::new().unwrap();
-        let broker = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let broker = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             dir.path().to_path_buf(),
         ))
         .await

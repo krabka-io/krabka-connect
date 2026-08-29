@@ -7,15 +7,15 @@ use std::{io, sync::Arc, time::Duration};
 
 use assert2::assert;
 use bytes::Bytes;
-use crabka_broker::{Broker, BrokerConfig};
-use crabka_client_consumer::{AutoOffsetReset, Consumer, ConsumerRecord};
-use crabka_connect::{ConnectorHandle, ConnectorRuntime, RuntimeState, SecretString};
-use crabka_connect_postgres::{
+use krabka_broker::{Broker, BrokerConfig};
+use krabka_client_consumer::{AutoOffsetReset, Consumer, ConsumerRecord};
+use krabka_connect::{ConnectorHandle, ConnectorRuntime, RuntimeState, SecretString};
+use krabka_connect_postgres::{
     ColumnValue, EntityKey, PostgresSourceConfig, PostgresWalSource, model::ScalarValue,
     schema::PostgresProtoEncoder,
 };
-use crabka_connect_worker::{KafkaCheckpointStore, KafkaSink};
-use crabka_units::millis;
+use krabka_connect_worker::{KafkaCheckpointStore, KafkaSink};
+use krabka_units::millis;
 use testcontainers::{
     ContainerAsync, GenericImage, ImageExt,
     core::{IntoContainerPort as _, WaitFor},
@@ -256,8 +256,8 @@ async fn start_connector(
     let source = PostgresWalSource::connect(PostgresSourceConfig {
         schema_registry_url: schema_registry_url.to_owned(),
         database_url: SecretString::new(database_url),
-        slot_name: "orders_crabka".to_owned(),
-        publication_name: "crabka_connect".to_owned(),
+        slot_name: "orders_krabka".to_owned(),
+        publication_name: "krabka_connect".to_owned(),
         schema: "public".to_owned(),
         table_names: vec!["orders".to_owned()],
         max_messages_per_poll: 100,
@@ -301,7 +301,7 @@ async fn wait_for_record_count(bootstrap: &str, expected: usize) -> TestResult {
     timeout(WAIT, async {
         loop {
             if let Ok(records) =
-                crabka_replicator::admin_util::read_all(bootstrap, TOPIC, None).await
+                krabka_replicator::admin_util::read_all(bootstrap, TOPIC, None).await
             {
                 let count = records.len();
                 assert!(
@@ -335,7 +335,7 @@ async fn read_records(
         Consumer::builder()
             .bootstrap(bootstrap)
             .group_id(group_id)
-            .client_id("crabka-connect-worker-acceptance")
+            .client_id("krabka-connect-worker-acceptance")
             .subscribe(vec![TOPIC.to_owned()])
             .auto_offset_reset(AutoOffsetReset::Earliest)
             .build(),
@@ -362,7 +362,7 @@ fn observe(record: ConsumerRecord) -> TestResult<ObservedRecord> {
     let operation = record
         .headers
         .iter()
-        .find(|header| header.key == "crabka.pg.operation")
+        .find(|header| header.key == "krabka.pg.operation")
         .and_then(|header| header.value.as_deref())
         .ok_or_else(|| io::Error::other("CDC record is missing operation header"))?;
     Ok(ObservedRecord {

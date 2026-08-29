@@ -84,7 +84,7 @@ impl<K, V> ConnectRecord<K, V> {
 
 /// A single Kafka record header: a string key and an opaque optional value.
 ///
-/// Mirrors `crabka_protocol::records::RecordHeader` and the producer's `Header`.
+/// Mirrors `krabka_protocol::records::RecordHeader` and the producer's `Header`.
 /// It stays here so the connector SPI does not pull in the wire-record crates.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Header {

@@ -9,13 +9,13 @@
 //!   exact wire bytes. That is the Kafka-compatibility constraint that always
 //!   matters.
 //! - [`SchemaConverter`][]: bridges the Confluent schema-registry serdes from
-//!   `crabka-schema-serde`, so a connector can read and write typed Avro,
+//!   `krabka-schema-serde`, so a connector can read and write typed Avro,
 //!   Protobuf, and JSON records.
 
 use std::sync::Arc;
 
 use bytes::Bytes;
-use crabka_schema_serde::format::{SchemaDeserializer, SchemaSerializer};
+use krabka_schema_serde::format::{SchemaDeserializer, SchemaSerializer};
 
 use crate::error::ConnectError;
 
@@ -61,7 +61,7 @@ impl Converter<Bytes> for ByteIdentity {
 
 /// A schema-registry-backed converter. It serializes with a
 /// [`SchemaSerializer`] and deserializes with a [`SchemaDeserializer`] from
-/// `crabka-schema-serde`.
+/// `krabka-schema-serde`.
 ///
 /// Pair the serializer and the deserializer of one format serde, for example
 /// those of an `AvroSerde`, to read and write typed records framed in the
@@ -102,7 +102,7 @@ impl<T: Send + Sync + 'static> Converter<T> for SchemaConverter<T> {
 #[cfg(test)]
 mod tests {
     use assert2::check;
-    use crabka_schema_serde::SchemaSerdeError;
+    use krabka_schema_serde::SchemaSerdeError;
 
     use super::*;
 

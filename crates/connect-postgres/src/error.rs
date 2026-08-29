@@ -1,4 +1,4 @@
-use crabka_connect::ConnectError;
+use krabka_connect::ConnectError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PostgresConnectError {

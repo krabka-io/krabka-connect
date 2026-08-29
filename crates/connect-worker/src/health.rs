@@ -137,7 +137,7 @@ mod tests {
             .await
             .expect("body");
         let text = std::str::from_utf8(&body).expect("OpenMetrics is UTF-8");
-        assert!(text.contains("crabka_connect_worker_live 1"));
-        assert!(text.contains("crabka_connect_worker_ready 1"));
+        assert!(text.contains("krabka_connect_worker_live 1"));
+        assert!(text.contains("krabka_connect_worker_ready 1"));
     }
 }

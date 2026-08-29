@@ -8,7 +8,7 @@ exports_files(["Cargo.toml"])
 crate_library(name = "replicator")
 
 crate_binary(
-    name = "crabka-replicator",
+    name = "krabka-replicator",
     crate_root = "src/main.rs",
     lib = "replicator",
 )
@@ -21,7 +21,7 @@ crate_tests(
     # defines that for a bin target in the same crate; under Bazel it exists
     # only when the binary is a declared input, and it is set on the compile
     # action, so the test does not build without it.
-    data = [":crabka-replicator"],
+    data = [":krabka-replicator"],
     lib = "replicator",
     mutants_jobs = 1,
     mutants_shards = 12,

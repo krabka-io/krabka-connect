@@ -1,4 +1,4 @@
-//! Postgres logical-decoding source connector for Crabka Connect.
+//! Postgres logical-decoding source connector for Krabka Connect.
 
 mod catalog;
 pub mod config;

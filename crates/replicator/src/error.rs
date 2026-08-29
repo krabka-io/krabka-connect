@@ -5,7 +5,7 @@ pub enum ReplicatorError {
     #[error("config error: {0}")]
     Config(String),
     #[error("connect error: {0}")]
-    Connect(#[from] crabka_connect::ConnectError),
+    Connect(#[from] krabka_connect::ConnectError),
     #[error("client error: {0}")]
     Client(String),
     #[error("MM2 codec error: {0}")]

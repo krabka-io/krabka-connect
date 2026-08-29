@@ -1,7 +1,7 @@
-# crabka-connect-postgres
+# krabka-connect-postgres
 
-`crabka-connect-postgres` is a Postgres logical-decoding source connector for
-`crabka-connect`.
+`krabka-connect-postgres` is a Postgres logical-decoding source connector for
+`krabka-connect`.
 
 The connector reads `pgoutput` changes from a logical replication slot and emits
 Kafka Connect-style records with Protobuf-framed keys and values. DELETE events

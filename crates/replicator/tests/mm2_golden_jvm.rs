@@ -1,4 +1,4 @@
-//! Byte-exactness proof: Crabka's MirrorMaker-2 record codecs produce and
+//! Byte-exactness proof: Krabka's MirrorMaker-2 record codecs produce and
 //! consume the *same* bytes as the real JVM MM2 classes.
 //!
 //! The golden vectors in `tests/fixtures/mm2_serde_golden.json` were captured
@@ -26,7 +26,7 @@
 
 use std::collections::HashMap;
 
-use crabka_replicator::{
+use krabka_replicator::{
     ids::{DownstreamOffset, PartitionIndex, UpstreamOffset},
     mm2::{Checkpoint, Heartbeat, OffsetSync},
 };

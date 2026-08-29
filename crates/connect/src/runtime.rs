@@ -167,11 +167,11 @@ impl Default for Config {
 /// [`run`](ConnectorRuntime::run) it.
 ///
 /// ```no_run
-/// # use crabka_connect::runtime::ConnectorRuntime;
+/// # use krabka_connect::runtime::ConnectorRuntime;
 /// # async fn demo<S, K, K2>(source: S, sink: K2)
 /// # where
-/// #     S: crabka_connect::Source<K, K>,
-/// #     K2: crabka_connect::Sink<K, K>,
+/// #     S: krabka_connect::Source<K, K>,
+/// #     K2: krabka_connect::Sink<K, K>,
 /// #     K: Send + 'static,
 /// # {
 /// let handle = ConnectorRuntime::new()

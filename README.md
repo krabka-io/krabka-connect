@@ -1,6 +1,6 @@
 # krabka-connect
 
-Crabka Connect: the connector framework, the connectors built on it, and the
+Krabka Connect: the connector framework, the connectors built on it, and the
 worker that runs them.
 
 A connector moves records between an external system and Kafka. This repository
@@ -22,11 +22,11 @@ integration suites boot.
 
 | Crate | What it is |
 | --- | --- |
-| `crabka-connect` | The connector SPI: `Source`, `Sink`, `Converter`, and the checkpoint contract between them |
-| `crabka-connect-derive` | Derive macros for connector configuration |
-| `crabka-connect-postgres` | A Postgres change-data-capture source, over logical decoding |
-| `crabka-connect-worker` | The runtime: polls a source, batches into a sink, and checkpoints |
-| `crabka-replicator` | Cluster-to-cluster replication, wire-compatible with MirrorMaker 2 |
+| `krabka-connect` | The connector SPI: `Source`, `Sink`, `Converter`, and the checkpoint contract between them |
+| `krabka-connect-derive` | Derive macros for connector configuration |
+| `krabka-connect-postgres` | A Postgres change-data-capture source, over logical decoding |
+| `krabka-connect-worker` | The runtime: polls a source, batches into a sink, and checkpoints |
+| `krabka-replicator` | Cluster-to-cluster replication, wire-compatible with MirrorMaker 2 |
 
 ## Build
 
@@ -64,7 +64,7 @@ daemon, which Bazel cannot declare as an input, so it is tagged `manual` and
 stays out of a plain `bazel test //...`:
 
 ```bash
-cargo test -p crabka-connect-worker --test postgres_cdc -- --ignored
+cargo test -p krabka-connect-worker --test postgres_cdc -- --ignored
 ```
 
 The broker it boots binds every interface and advertises itself on the Docker

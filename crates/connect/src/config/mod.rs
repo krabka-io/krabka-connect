@@ -6,7 +6,7 @@
 //!
 //! # #[cfg(feature = "derive")]
 //! # mod example {
-//! use crabka_connect::{
+//! use krabka_connect::{
 //!     ConfigDef, ConnectorConfig, EnvSecretResolver, SecretString,
 //! };
 //! use serde_json::json;
@@ -21,7 +21,7 @@
 //!     schema: String,
 //! }
 //!
-//! # async fn build() -> crabka_connect::ConfigResult<ExampleConfig> {
+//! # async fn build() -> krabka_connect::ConfigResult<ExampleConfig> {
 //! let raw: serde_json::Map<String, serde_json::Value> = serde_json::Map::from_iter([
 //!     ("database_url".to_string(), json!("postgres://localhost/app")),
 //!     (

@@ -8,8 +8,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use crabka_connect::{ConnectorRuntime, RuntimeState};
-use crabka_units::{
+use krabka_connect::{ConnectorRuntime, RuntimeState};
+use krabka_units::{
     fmt::Human as _,
     prelude::{Time, TimeExt as _},
 };
@@ -58,9 +58,9 @@ pub struct FlowWorkerParams {
     /// Selector for which consumer groups the checkpoint task translates.
     pub group_selector: Selector,
     /// Optional TLS/SASL security for the source cluster.
-    pub security_source: Option<crabka_client_core::security::ClientSecurity>,
+    pub security_source: Option<krabka_client_core::security::ClientSecurity>,
     /// Optional TLS/SASL security for the target cluster.
-    pub security_target: Option<crabka_client_core::security::ClientSecurity>,
+    pub security_target: Option<krabka_client_core::security::ClientSecurity>,
     /// Process-owned Kafka client resource policy.
     pub client_resource_policy: ClientResourcePolicy,
     /// Process-owned runtime and topic policy.
@@ -70,7 +70,7 @@ pub struct FlowWorkerParams {
 /// One directional replication flow: the running connect runtime plus the
 /// heartbeat and checkpoint background tasks.
 pub struct FlowWorker {
-    runtime: crabka_connect::ConnectorHandle,
+    runtime: krabka_connect::ConnectorHandle,
     heartbeat: HeartbeatTask,
     checkpoint: CheckpointTask,
 }
@@ -147,7 +147,7 @@ impl FlowWorker {
         err,
     )]
     async fn build(p: &FlowWorkerParams) -> crate::Result<Self> {
-        let group_id = format!("crabka-replicator-{}", p.flow_name);
+        let group_id = format!("krabka-replicator-{}", p.flow_name);
         tracing::Span::current().record("group_id", group_id.as_str());
 
         let source = SourceConsumer::start_with_runtime_policy(
@@ -254,7 +254,7 @@ impl FlowWorker {
 #[cfg(test)]
 mod tests {
 
-    use crabka_units::{millis, secs};
+    use krabka_units::{millis, secs};
 
     use super::*;
 
@@ -299,12 +299,12 @@ mod tests {
     async fn worker_replicates_one_flow() {
         let s_dir = tempfile::TempDir::new().unwrap();
         let t_dir = tempfile::TempDir::new().unwrap();
-        let source = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let source = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             s_dir.path().to_path_buf(),
         ))
         .await
         .unwrap();
-        let target = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let target = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             t_dir.path().to_path_buf(),
         ))
         .await
@@ -338,7 +338,7 @@ mod tests {
 
         crate::test_util::await_topic_count(&tb, "us-east.orders", 1, secs(15)).await;
 
-        let mut admin = crabka_client_admin::AdminClient::connect(std::slice::from_ref(&tb))
+        let mut admin = krabka_client_admin::AdminClient::connect(std::slice::from_ref(&tb))
             .await
             .unwrap();
         let metadata = admin.metadata(&["us-east.orders"]).await.unwrap();

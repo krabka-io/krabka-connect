@@ -1,4 +1,4 @@
-use crabka_connect_derive::ConnectorConfig;
+use krabka_connect_derive::ConnectorConfig;
 
 #[derive(ConnectorConfig)]
 struct SecretOnStringConfig {

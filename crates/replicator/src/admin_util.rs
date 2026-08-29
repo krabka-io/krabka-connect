@@ -6,9 +6,9 @@
 use std::collections::BTreeMap;
 
 use bytes::Bytes;
-use crabka_client_admin::{AdminClient, CreateTopicSpec};
-use crabka_client_consumer::{AutoOffsetReset, Consumer, IsolationLevel};
-use crabka_client_core::security::ClientSecurity;
+use krabka_client_admin::{AdminClient, CreateTopicSpec};
+use krabka_client_consumer::{AutoOffsetReset, Consumer, IsolationLevel};
+use krabka_client_core::security::ClientSecurity;
 
 use crate::config::{ClientResourcePolicy, ReplicationFactor, ReplicatorRuntimePolicy};
 
@@ -253,12 +253,12 @@ fn admin_options(
     security: Option<ClientSecurity>,
     policy: ClientResourcePolicy,
     runtime_policy: &ReplicatorRuntimePolicy,
-) -> Result<crabka_client_core::ConnectionOptions, String> {
-    Ok(crabka_client_core::ConnectionOptions {
-        dns_timeout: crabka_client_core::ClientDnsTimeout::new(runtime_policy.client_dns_timeout)?,
+) -> Result<krabka_client_core::ConnectionOptions, String> {
+    Ok(krabka_client_core::ConnectionOptions {
+        dns_timeout: krabka_client_core::ClientDnsTimeout::new(runtime_policy.client_dns_timeout)?,
         connect_timeout: runtime_policy.client_connect_timeout,
         request_timeout: runtime_policy.client_request_timeout,
-        client_id: "crabka-operator".to_owned(),
+        client_id: "krabka-operator".to_owned(),
         dispatch_queue_capacity: policy.dispatch_queue_capacity,
         frame_max: policy.frame_max,
         security: security.map(Box::new),
@@ -274,12 +274,12 @@ async fn build_drain_consumer(
     topic: &str,
     security: Option<ClientSecurity>,
     client_resource_policy: ClientResourcePolicy,
-) -> Result<Consumer, crabka_client_consumer::ConsumerError> {
+) -> Result<Consumer, krabka_client_consumer::ConsumerError> {
     if let Some(sec) = security {
         Consumer::builder()
             .bootstrap(bootstrap)
             .group_id(group_id)
-            .client_id("crabka-replicator-util")
+            .client_id("krabka-replicator-util")
             .dispatch_queue_capacity(client_resource_policy.dispatch_queue_capacity.get())
             .frame_max(client_resource_policy.frame_max.size())
             .subscribe(vec![topic.to_string()])
@@ -292,7 +292,7 @@ async fn build_drain_consumer(
         Consumer::builder()
             .bootstrap(bootstrap)
             .group_id(group_id)
-            .client_id("crabka-replicator-util")
+            .client_id("krabka-replicator-util")
             .dispatch_queue_capacity(client_resource_policy.dispatch_queue_capacity.get())
             .frame_max(client_resource_policy.frame_max.size())
             .subscribe(vec![topic.to_string()])
@@ -357,7 +357,7 @@ pub(crate) async fn read_all_with_runtime_policy(
     client_resource_policy: ClientResourcePolicy,
     runtime_policy: &ReplicatorRuntimePolicy,
 ) -> Result<Vec<RawRecord>, String> {
-    let group_id = format!("crabka-replicator-reader-{topic}");
+    let group_id = format!("krabka-replicator-reader-{topic}");
 
     let mut consumer =
         match build_drain_consumer(bootstrap, group_id, topic, security, client_resource_policy)
@@ -495,7 +495,7 @@ fn is_unknown_topic_error(msg: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crabka_units::prelude::{TimeExt as _, secs};
+    use krabka_units::prelude::{TimeExt as _, secs};
 
     #[test]
     fn create_topics_timeout_reaches_the_wire_as_int32_millis() {
@@ -509,7 +509,7 @@ mod tests {
     #[test]
     fn drain_poll_timeout_is_half_a_second() {
         let policy = crate::config::ReplicatorRuntimePolicy::default();
-        assert2::assert!(policy.internal_drain_poll_timeout == crabka_units::millis(500));
+        assert2::assert!(policy.internal_drain_poll_timeout == krabka_units::millis(500));
     }
 
     #[test]
@@ -532,7 +532,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn ensure_produce_read_roundtrip() {
         let dir = tempfile::TempDir::new().unwrap();
-        let broker = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let broker = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             dir.path().to_path_buf(),
         ))
         .await

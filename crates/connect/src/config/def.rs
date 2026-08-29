@@ -705,7 +705,7 @@ mod tests {
         let def = ConfigDef::new("demo").secret("password");
         let raw = raw([(
             "password",
-            json!({"from": "env", "name": "CRABKA_CONNECT_TEST_MISSING_PASSWORD"}),
+            json!({"from": "env", "name": "KRABKA_CONNECT_TEST_MISSING_PASSWORD"}),
         )]);
 
         let err = def.resolve(raw, &EnvSecretResolver).await.unwrap_err();
