@@ -1,8 +1,8 @@
 //! Heartbeat task: periodically writes MM2 Heartbeat records to the target.
 
 use bytes::Bytes;
-use crabka_client_producer::{Acks, Producer, ProducerRecord};
-use crabka_units::{
+use krabka_client_producer::{Acks, Producer, ProducerRecord};
+use krabka_units::{
     fmt::Human as _,
     prelude::{Time, TimeExt as _},
 };
@@ -33,7 +33,7 @@ pub struct HeartbeatParams {
     /// on a mock timeline and not on wall-clock time.
     pub sleeper: std::sync::Arc<dyn qubit_clock::sleep::AsyncSleeper>,
     /// Optional TLS/SASL security for the target cluster.
-    pub security: Option<crabka_client_core::security::ClientSecurity>,
+    pub security: Option<krabka_client_core::security::ClientSecurity>,
 }
 
 /// A handle to the background heartbeat task.
@@ -185,9 +185,9 @@ impl HeartbeatTask {
 /// Build a non-idempotent producer with `acks=All` for heartbeat emission.
 async fn build_producer(
     bootstrap: &str,
-    security: Option<crabka_client_core::security::ClientSecurity>,
+    security: Option<krabka_client_core::security::ClientSecurity>,
     client_resource_policy: ClientResourcePolicy,
-) -> Result<Producer, crabka_client_producer::ProducerError> {
+) -> Result<Producer, krabka_client_producer::ProducerError> {
     let builder = Producer::builder()
         .bootstrap(bootstrap)
         .dispatch_queue_capacity(client_resource_policy.dispatch_queue_capacity.get())
@@ -204,7 +204,7 @@ async fn build_producer(
 mod tests {
     use std::sync::Arc;
 
-    use crabka_units::prelude::{millis, secs};
+    use krabka_units::prelude::{millis, secs};
     use qubit_clock::{MockTime, MockWaiterKind};
 
     use super::*;
@@ -218,7 +218,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn emits_heartbeat() {
         let dir = tempfile::TempDir::new().unwrap();
-        let broker = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let broker = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             dir.path().to_path_buf(),
         ))
         .await

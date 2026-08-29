@@ -1,12 +1,12 @@
-//! Shared helpers for crabka-replicator integration tests. Each `tests/*.rs`
+//! Shared helpers for krabka-replicator integration tests. Each `tests/*.rs`
 //! file includes them with `mod common;`. They use the crate's public
 //! `admin_util` plus the real broker, producer, and consumer clients.
 #![allow(dead_code)]
 
-use crabka_broker::{Broker, BrokerConfig, BrokerHandle};
-use crabka_client_consumer::{AutoOffsetReset, Consumer};
-use crabka_client_producer::{Acks, Producer, ProducerRecord};
-use crabka_units::prelude::{StdDurationExt as _, Time, TimeExt as _, millis};
+use krabka_broker::{Broker, BrokerConfig, BrokerHandle};
+use krabka_client_consumer::{AutoOffsetReset, Consumer};
+use krabka_client_producer::{Acks, Producer, ProducerRecord};
+use krabka_units::prelude::{StdDurationExt as _, Time, TimeExt as _, millis};
 use tempfile::TempDir;
 
 /// How long each poll waits for records while draining a topic.
@@ -38,7 +38,7 @@ pub async fn start_broker() -> TestBroker {
 
 /// Create a topic with the delete policy.
 pub async fn create_topic(bootstrap: &str, name: &str, partitions: i32) {
-    crabka_replicator::admin_util::ensure_topic(bootstrap, name, partitions, None)
+    krabka_replicator::admin_util::ensure_topic(bootstrap, name, partitions, None)
         .await
         .expect("ensure_topic");
 }
@@ -72,7 +72,7 @@ pub async fn produce(bootstrap: &str, topic: &str, key: &[u8], value: &[u8]) {
 /// Count records currently in `topic`. The helper drains the topic through the
 /// public admin helper.
 pub async fn count(bootstrap: &str, topic: &str) -> usize {
-    crabka_replicator::admin_util::read_all(bootstrap, topic, None)
+    krabka_replicator::admin_util::read_all(bootstrap, topic, None)
         .await
         .map_or(0, |v| v.len())
 }

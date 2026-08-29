@@ -1,42 +1,42 @@
-# crabka-connect-derive
+# krabka-connect-derive
 
-[![Crates.io](https://img.shields.io/crates/v/crabka-connect-derive.svg)](https://crates.io/crates/crabka-connect-derive)
-[![Docs.rs](https://docs.rs/crabka-connect-derive/badge.svg)](https://docs.rs/crabka-connect-derive)
+[![Crates.io](https://img.shields.io/crates/v/krabka-connect-derive.svg)](https://crates.io/crates/krabka-connect-derive)
+[![Docs.rs](https://docs.rs/krabka-connect-derive/badge.svg)](https://docs.rs/krabka-connect-derive)
 [![CI](https://github.com/robot-head/crabka/actions/workflows/ci.yml/badge.svg)](https://github.com/robot-head/crabka/actions/workflows/ci.yml)
 
-Derive macros for `crabka-connect` connector configuration.
+Derive macros for `krabka-connect` connector configuration.
 
-Part of [Crabka](https://github.com/robot-head/crabka), a Rust implementation
+Part of [Krabka](https://github.com/robot-head/crabka), a Rust implementation
 of Apache Kafka-compatible infrastructure and clients.
 
 ## Overview
 
-`crabka-connect-derive` supplies `#[derive(ConnectorConfig)]`. Connector authors
+`krabka-connect-derive` supplies `#[derive(ConnectorConfig)]`. Connector authors
 use this procedural macro to declare ConfigDef-style schemas from Rust structs.
 It generates both `ConnectorConfig::config_def()` and
-`ConnectorConfig::from_resolved()` implementations for `crabka-connect`.
+`ConnectorConfig::from_resolved()` implementations for `krabka-connect`.
 
-Most users get this macro through `crabka-connect`'s default `derive` feature:
+Most users get this macro through `krabka-connect`'s default `derive` feature:
 
 ```toml
-crabka-connect = "0.3.8"
+krabka-connect = "0.3.8"
 ```
 
 Use this crate directly only when you need the proc-macro dependency separate
-from `crabka-connect`'s default feature set.
+from `krabka-connect`'s default feature set.
 
 ## Install
 
 ```sh
-cargo add crabka-connect-derive
-cargo add crabka-connect
+cargo add krabka-connect-derive
+cargo add krabka-connect
 ```
 
-For the usual connector-authoring path, prefer `crabka-connect` with its
+For the usual connector-authoring path, prefer `krabka-connect` with its
 default `derive` feature enabled:
 
 ```sh
-cargo add crabka-connect
+cargo add krabka-connect
 ```
 
 ## Supported Attributes
@@ -48,7 +48,7 @@ cargo add crabka-connect
 - `#[config(default = ...)]` - set the ConfigDef default expression.
 - `#[config(name = "...")]` - use a config key that differs from the field name.
 - `#[config(crate = "path")]` - container attribute for renamed
-  `crabka-connect` dependencies.
+  `krabka-connect` dependencies.
 
 ## Supported Field Types
 
@@ -59,7 +59,7 @@ The derive supports `String`, `bool`, signed and unsigned integer types,
 ## Usage
 
 ```rust
-use crabka_connect::{ConnectorConfig, SecretString};
+use krabka_connect::{ConnectorConfig, SecretString};
 
 #[derive(ConnectorConfig)]
 struct PostgresSourceConfig {
@@ -91,9 +91,9 @@ keys in a `ConfigDef`, then extracts typed values from a resolved config map.
 
 ## Documentation
 
-- [API documentation](https://docs.rs/crabka-connect-derive)
-- [Connector SPI crate](https://crates.io/crates/crabka-connect)
-- [Crabka repository](https://github.com/robot-head/crabka)
+- [API documentation](https://docs.rs/krabka-connect-derive)
+- [Connector SPI crate](https://crates.io/crates/krabka-connect)
+- [Krabka repository](https://github.com/robot-head/crabka)
 
 ## License
 

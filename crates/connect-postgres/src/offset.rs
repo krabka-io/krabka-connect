@@ -1,6 +1,6 @@
 use std::{fmt, str::FromStr};
 
-use crabka_connect::{OffsetMap, OffsetValue, SourceOffset};
+use krabka_connect::{OffsetMap, OffsetValue, SourceOffset};
 
 use crate::PostgresConnectError;
 
@@ -90,7 +90,7 @@ fn parse_lsn_half(half: &str, lsn: &str) -> Result<u64, PostgresConnectError> {
 
 #[cfg(test)]
 mod tests {
-    use crabka_connect::{OffsetValue, SourceOffset};
+    use krabka_connect::{OffsetValue, SourceOffset};
 
     use super::PgLsn;
     use crate::PostgresConnectError;

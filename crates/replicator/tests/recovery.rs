@@ -16,11 +16,11 @@ mod common;
 use std::collections::{BTreeMap, HashSet};
 
 use assert2::check;
-use crabka_replicator::{
+use krabka_replicator::{
     config::{ClusterConfig, Delivery, FlowConfig, NamingPolicy, ReplicatorConfig, Selectors},
     supervisor::FlowSupervisor,
 };
-use crabka_units::prelude::secs;
+use krabka_units::prelude::secs;
 
 /// Build a `ReplicatorConfig` for the us-east → eu-west flow that replicates
 /// the `orders` topic. Both brokers must already run when the test calls this
@@ -107,7 +107,7 @@ async fn restart_resumes_with_no_gap() {
     common::await_count(&target.bootstrap, "us-east.orders", 20, secs(30)).await;
 
     // ── Step 6: collect the full key set from the target ─────────────────────
-    let recs = crabka_replicator::admin_util::read_all(&target.bootstrap, "us-east.orders", None)
+    let recs = krabka_replicator::admin_util::read_all(&target.bootstrap, "us-east.orders", None)
         .await
         .expect("read_all");
 
@@ -197,7 +197,7 @@ async fn exactly_once_restart_does_not_duplicate_committed_output() {
     second.shutdown().await;
 
     let records =
-        crabka_replicator::admin_util::read_all(&target.bootstrap, "us-east.orders", None)
+        krabka_replicator::admin_util::read_all(&target.bootstrap, "us-east.orders", None)
             .await
             .expect("read exactly-once output");
     let keys: HashSet<Vec<u8>> = records

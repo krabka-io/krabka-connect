@@ -1,6 +1,6 @@
-extern crate crabka_connect as renamed_connect;
+extern crate krabka_connect as renamed_connect;
 
-use crabka_connect_derive::ConnectorConfig;
+use krabka_connect_derive::ConnectorConfig;
 use renamed_connect::{ConnectorConfig as _, SecretString};
 
 #[derive(ConnectorConfig)]

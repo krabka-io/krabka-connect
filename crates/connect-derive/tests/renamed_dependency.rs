@@ -1,7 +1,7 @@
 use std::{fs, process::Command};
 
 #[test]
-fn derive_works_when_crabka_connect_dependency_is_renamed() {
+fn derive_works_when_krabka_connect_dependency_is_renamed() {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_root = manifest_dir
         .parent()
@@ -24,7 +24,7 @@ edition = "2024"
 [workspace]
 
 [dependencies]
-renamed-connect = {{ package = "crabka-connect", path = "{}" }}
+renamed-connect = {{ package = "krabka-connect", path = "{}" }}
 "#,
             // Backslashes in Windows paths are parsed as escape sequences in
             // basic TOML strings; forward slashes work on every platform.

@@ -4,32 +4,32 @@
 
 use anyhow::Context as _;
 use clap::Parser;
-use crabka_client_core::{
+use krabka_client_core::{
     ClientFrameMax, ConnectionDispatchQueueCapacity, DEFAULT_CONNECTION_DISPATCH_QUEUE_CAPACITY,
 };
-use crabka_replicator::{
+use krabka_replicator::{
     config::{ClientResourcePolicy, ReplicatorConfig, ReplicatorRuntimePolicy},
     supervisor::FlowSupervisor,
 };
-use crabka_units::{ByteSize, parse};
+use krabka_units::{ByteSize, parse};
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 #[derive(Debug, Parser)]
-#[command(name = "crabka-replicator", version, about)]
+#[command(name = "krabka-replicator", version, about)]
 struct Cli {
     /// Path to the replicator YAML config.
-    #[arg(long, env = "CRABKA_REPLICATOR_CONFIG")]
+    #[arg(long, env = "KRABKA_REPLICATOR_CONFIG")]
     config: std::path::PathBuf,
     #[arg(
         long,
-        env = "CRABKA_REPLICATOR_CLIENT_DISPATCH_QUEUE_CAPACITY",
+        env = "KRABKA_REPLICATOR_CLIENT_DISPATCH_QUEUE_CAPACITY",
         default_value_t = DEFAULT_CONNECTION_DISPATCH_QUEUE_CAPACITY,
         value_parser = parse_client_dispatch_queue_capacity
     )]
     client_dispatch_queue_capacity: usize,
     #[arg(
         long,
-        env = "CRABKA_REPLICATOR_CLIENT_FRAME_MAX",
+        env = "KRABKA_REPLICATOR_CLIENT_FRAME_MAX",
         default_value = "100MiB",
         value_parser = parse_client_frame_max
     )]
@@ -54,9 +54,9 @@ async fn main() -> anyhow::Result<()> {
         .install_default()
         .ok();
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| "crabka_replicator=info,info".into());
+        .unwrap_or_else(|_| "krabka_replicator=info,info".into());
     tracing_subscriber::registry()
-        .with(crabka_logfmt::layer(filter, std::io::stdout))
+        .with(krabka_logfmt::layer(filter, std::io::stdout))
         .init();
 
     let cli = Cli::parse();
@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
     let supervisor =
         FlowSupervisor::run_with_runtime_policy(config, client_resource_policy, cli.runtime_policy)
             .await?;
-    tracing::info!("crabka-replicator running; send SIGINT/ctrl-c to stop");
+    tracing::info!("krabka-replicator running; send SIGINT/ctrl-c to stop");
     tokio::signal::ctrl_c().await?;
     tracing::info!("shutdown requested; draining flows");
     supervisor.shutdown().await;
@@ -86,18 +86,18 @@ async fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use clap::Parser;
-    use crabka_units::{kibibytes, mebibytes, millis, secs};
+    use krabka_units::{kibibytes, mebibytes, millis, secs};
 
     use super::Cli;
 
     #[test]
     fn client_resource_policy_parses_defaults_overrides_and_rejects_invalid() {
-        let defaults = Cli::try_parse_from(["crabka-replicator", "--config=config.yaml"]).unwrap();
+        let defaults = Cli::try_parse_from(["krabka-replicator", "--config=config.yaml"]).unwrap();
         assert2::assert!(defaults.client_dispatch_queue_capacity == 64);
         assert2::assert!(defaults.client_frame_max == mebibytes(100));
 
         let custom = Cli::try_parse_from([
-            "crabka-replicator",
+            "krabka-replicator",
             "--config=config.yaml",
             "--client-dispatch-queue-capacity=7",
             "--client-frame-max=32KiB",
@@ -111,7 +111,7 @@ mod tests {
             "--client-frame-max=101MiB",
         ] {
             assert2::assert!(
-                Cli::try_parse_from(["crabka-replicator", "--config=config.yaml", invalid])
+                Cli::try_parse_from(["krabka-replicator", "--config=config.yaml", invalid])
                     .is_err()
             );
         }
@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn client_resource_policy_reads_environment_and_prefers_cli() {
-        const CHILD: &str = "CRABKA_REPLICATOR_CLIENT_RESOURCE_POLICY_CHILD";
+        const CHILD: &str = "KRABKA_REPLICATOR_CLIENT_RESOURCE_POLICY_CHILD";
 
         if std::env::var_os(CHILD).is_none() {
             let status =
@@ -129,17 +129,17 @@ mod tests {
                         "tests::client_resource_policy_reads_environment_and_prefers_cli",
                     ])
                     .env(CHILD, "1")
-                    .env("CRABKA_REPLICATOR_CLIENT_DISPATCH_QUEUE_CAPACITY", "7")
-                    .env("CRABKA_REPLICATOR_CLIENT_FRAME_MAX", "32KiB")
-                    .env("CRABKA_REPLICATOR_SOURCE_POLL_TIMEOUT", "17ms")
-                    .env("CRABKA_REPLICATOR_INTERNAL_TOPIC_REPLICATION_FACTOR", "2")
+                    .env("KRABKA_REPLICATOR_CLIENT_DISPATCH_QUEUE_CAPACITY", "7")
+                    .env("KRABKA_REPLICATOR_CLIENT_FRAME_MAX", "32KiB")
+                    .env("KRABKA_REPLICATOR_SOURCE_POLL_TIMEOUT", "17ms")
+                    .env("KRABKA_REPLICATOR_INTERNAL_TOPIC_REPLICATION_FACTOR", "2")
                     .status()
                     .expect("child test");
             assert2::assert!(status.success());
             return;
         }
 
-        let from_env = Cli::try_parse_from(["crabka-replicator", "--config=config.yaml"]).unwrap();
+        let from_env = Cli::try_parse_from(["krabka-replicator", "--config=config.yaml"]).unwrap();
         assert2::assert!(from_env.client_dispatch_queue_capacity == 7);
         assert2::assert!(from_env.client_frame_max == kibibytes(32));
         assert2::assert!(from_env.runtime_policy.source_poll_timeout == millis(17));
@@ -152,7 +152,7 @@ mod tests {
         );
 
         let from_cli = Cli::try_parse_from([
-            "crabka-replicator",
+            "krabka-replicator",
             "--config=config.yaml",
             "--client-dispatch-queue-capacity=9",
             "--client-frame-max=64KiB",
@@ -174,15 +174,15 @@ mod tests {
 
     #[test]
     fn runtime_policy_parses_defaults_overrides_and_invalid_values() {
-        let defaults = Cli::try_parse_from(["crabka-replicator", "--config=config.yaml"])
+        let defaults = Cli::try_parse_from(["krabka-replicator", "--config=config.yaml"])
             .expect("parse defaults");
         assert2::assert!(
             defaults.runtime_policy
-                == crabka_replicator::config::ReplicatorRuntimePolicy::default()
+                == krabka_replicator::config::ReplicatorRuntimePolicy::default()
         );
 
         let custom = Cli::try_parse_from([
-            "crabka-replicator",
+            "krabka-replicator",
             "--config=config.yaml",
             "--topic-create-timeout=11s",
             "--worker-build-retry-budget=20s",
@@ -205,7 +205,7 @@ mod tests {
             "--client-dns-timeout=1.5ms",
         ] {
             let parsed =
-                Cli::try_parse_from(["crabka-replicator", "--config=config.yaml", invalid]);
+                Cli::try_parse_from(["krabka-replicator", "--config=config.yaml", invalid]);
             if invalid == "--client-dns-timeout=1.5ms" {
                 assert2::assert!(parsed.unwrap().runtime_policy.validate().is_err());
             } else {
@@ -214,7 +214,7 @@ mod tests {
         }
 
         let invalid_relation = Cli::try_parse_from([
-            "crabka-replicator",
+            "krabka-replicator",
             "--config=config.yaml",
             "--worker-build-initial-backoff=5s",
             "--worker-build-max-backoff=4s",

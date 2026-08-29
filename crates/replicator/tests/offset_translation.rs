@@ -7,7 +7,7 @@ mod common;
 
 use std::collections::BTreeMap;
 
-use crabka_replicator::{
+use krabka_replicator::{
     config::{ClusterConfig, Delivery, FlowConfig, NamingPolicy, ReplicatorConfig, Selectors},
     ids::{CommittedOffset, DownstreamOffset, PartitionIndex, UpstreamOffset},
     mm2::{Checkpoint, OffsetSync},
@@ -16,7 +16,7 @@ use crabka_replicator::{
     supervisor::FlowSupervisor,
     tasks::checkpoint::{CheckpointParams, run_once},
 };
-use crabka_units::prelude::secs;
+use krabka_units::prelude::secs;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn offset_translation_never_skips_unreplicated_data() {
@@ -79,7 +79,7 @@ async fn offset_translation_never_skips_unreplicated_data() {
     // The sink wrote offset-sync records to `mm2-offset-syncs.us-east.internal`
     // on the TARGET cluster.  Drain that topic and feed every valid record into
     // the store.
-    let sync_records = crabka_replicator::admin_util::read_all(
+    let sync_records = krabka_replicator::admin_util::read_all(
         &target.bootstrap,
         &OffsetSync::topic_name("us-east"),
         None,
@@ -114,7 +114,7 @@ async fn offset_translation_never_skips_unreplicated_data() {
             source_bootstrap: source.bootstrap.clone(),
             target_bootstrap: target.bootstrap.clone(),
             source_alias: "us-east".into(),
-            naming: crabka_replicator::config::NamingPolicy::Default,
+            naming: krabka_replicator::config::NamingPolicy::Default,
             group_selector: Selector::compile(&["analytics".into()], &[]).unwrap(),
             security: None,
         },
@@ -126,7 +126,7 @@ async fn offset_translation_never_skips_unreplicated_data() {
     // ------------------------------------------ read back the checkpoint
     // Drain `us-east.checkpoints.internal` on the target and find the entry
     // for (analytics, orders, 0).
-    let checkpoint_records = crabka_replicator::admin_util::read_all(
+    let checkpoint_records = krabka_replicator::admin_util::read_all(
         &target.bootstrap,
         &Checkpoint::topic_name("us-east"),
         None,

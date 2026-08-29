@@ -5,9 +5,9 @@
 //! restarts any worker whose connect runtime has entered
 //! [`RuntimeState::Failed`].
 
-use crabka_client_admin::AdminClient;
-use crabka_connect::RuntimeState;
-use crabka_units::prelude::TimeExt as _;
+use krabka_client_admin::AdminClient;
+use krabka_connect::RuntimeState;
+use krabka_units::prelude::TimeExt as _;
 use tokio::{sync::watch, task::JoinHandle};
 
 use crate::{
@@ -79,7 +79,7 @@ fn make_params(spec: &RebuildSpec) -> FlowWorkerParams {
 fn is_internal(name: &str) -> bool {
     name.starts_with("__")
         || name == "heartbeats"
-        || name == "crabka-replicator-offsets"
+        || name == "krabka-replicator-offsets"
         || name.ends_with(".checkpoints.internal")
         || name.starts_with("mm2-offset-syncs.")
 }
@@ -156,14 +156,14 @@ impl FlowSupervisor {
             // Resolve the concrete topic list from the source cluster's metadata.
             let mut admin = AdminClient::connect_with_options(
                 std::slice::from_ref(&from.bootstrap),
-                crabka_client_core::ConnectionOptions {
-                    dns_timeout: crabka_client_core::ClientDnsTimeout::new(
+                krabka_client_core::ConnectionOptions {
+                    dns_timeout: krabka_client_core::ClientDnsTimeout::new(
                         runtime_policy.client_dns_timeout,
                     )
                     .map_err(ReplicatorError::Client)?,
                     connect_timeout: runtime_policy.client_connect_timeout,
                     request_timeout: runtime_policy.client_request_timeout,
-                    client_id: "crabka-operator".to_owned(),
+                    client_id: "krabka-operator".to_owned(),
                     dispatch_queue_capacity: client_resource_policy.dispatch_queue_capacity,
                     frame_max: client_resource_policy.frame_max,
                     security: None,
@@ -287,7 +287,7 @@ impl FlowSupervisor {
 mod tests {
     use std::collections::BTreeMap;
 
-    use crabka_units::secs;
+    use krabka_units::secs;
 
     use super::*;
     use crate::config::{
@@ -299,7 +299,7 @@ mod tests {
         for (topic, want) in [
             ("__consumer_offsets", true),
             ("heartbeats", true),
-            ("crabka-replicator-offsets", true),
+            ("krabka-replicator-offsets", true),
             ("us-east.eu-west.checkpoints.internal", true),
             ("mm2-offset-syncs.us-east.internal", true),
             ("orders", false),
@@ -313,12 +313,12 @@ mod tests {
     async fn spawns_a_worker_per_flow_and_replicates() {
         let s_dir = tempfile::TempDir::new().unwrap();
         let t_dir = tempfile::TempDir::new().unwrap();
-        let source = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let source = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             s_dir.path().to_path_buf(),
         ))
         .await
         .unwrap();
-        let target = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let target = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             t_dir.path().to_path_buf(),
         ))
         .await

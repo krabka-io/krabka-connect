@@ -4,17 +4,17 @@ use std::collections::HashSet;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use crabka_client_core::security::ClientSecurity;
-use crabka_client_producer::{Acks, Header, Producer, ProducerRecord};
-use crabka_connect::{CheckpointStore, ConnectError, ConnectRecord, Sink, SourceOffset};
-use crabka_replicator::config::ReplicationFactor;
-use crabka_units::{ByteSize, convert::ByteSizeExt as _};
+use krabka_client_core::security::ClientSecurity;
+use krabka_client_producer::{Acks, Header, Producer, ProducerRecord};
+use krabka_connect::{CheckpointStore, ConnectError, ConnectRecord, Sink, SourceOffset};
+use krabka_replicator::config::ReplicationFactor;
+use krabka_units::{ByteSize, convert::ByteSizeExt as _};
 use tokio::sync::oneshot::Receiver;
 
 use crate::metrics::WorkerMetrics;
 
 /// Compacted Kafka topic holding the most recent source offset per connector.
-pub const CHECKPOINT_TOPIC: &str = "__crabka_connect_offsets";
+pub const CHECKPOINT_TOPIC: &str = "__krabka_connect_offsets";
 
 #[derive(Clone)]
 pub(crate) struct KafkaClientConfig {
@@ -51,7 +51,7 @@ pub struct KafkaSink {
     ensured_topics: HashSet<String>,
     pending: Vec<
         Receiver<
-            Result<crabka_client_producer::RecordMetadata, crabka_client_producer::ProducerError>,
+            Result<krabka_client_producer::RecordMetadata, krabka_client_producer::ProducerError>,
         >,
     >,
     metrics: WorkerMetrics,
@@ -82,7 +82,7 @@ impl KafkaSink {
         topic_prefix: String,
         metrics: WorkerMetrics,
     ) -> Result<Self, ConnectError> {
-        let producer = build_producer(&client, "crabka-connect-worker-data".to_owned()).await?;
+        let producer = build_producer(&client, "krabka-connect-worker-data".to_owned()).await?;
         Ok(Self {
             producer,
             client,
@@ -100,7 +100,7 @@ impl Sink<Bytes, Bytes> for KafkaSink {
         for record in records {
             let output = to_producer_record(record, &self.topic_prefix)?;
             if self.ensured_topics.insert(output.topic.clone()) {
-                crabka_replicator::admin_util::ensure_topic_with_replication_factor(
+                krabka_replicator::admin_util::ensure_topic_with_replication_factor(
                     &self.client.bootstrap,
                     &output.topic,
                     1,
@@ -217,7 +217,7 @@ impl KafkaCheckpointStore {
         checkpoint_key: String,
         metrics: WorkerMetrics,
     ) -> Result<Self, ConnectError> {
-        crabka_replicator::admin_util::ensure_compacted_topic_with_replication_factor(
+        krabka_replicator::admin_util::ensure_compacted_topic_with_replication_factor(
             &client.bootstrap,
             CHECKPOINT_TOPIC,
             client.security.clone(),
@@ -225,7 +225,7 @@ impl KafkaCheckpointStore {
         )
         .await
         .map_err(ConnectError::Offset)?;
-        let producer = build_producer(&client, "crabka-connect-worker-checkpoint".to_owned())
+        let producer = build_producer(&client, "krabka-connect-worker-checkpoint".to_owned())
             .await
             .map_err(|error| ConnectError::Offset(error.to_string()))?;
         Ok(Self {
@@ -270,7 +270,7 @@ impl CheckpointStore for KafkaCheckpointStore {
     }
 
     async fn load(&self) -> Result<Option<SourceOffset>, ConnectError> {
-        let value = crabka_replicator::admin_util::read_last_value_for_key(
+        let value = krabka_replicator::admin_util::read_last_value_for_key(
             &self.client.bootstrap,
             CHECKPOINT_TOPIC,
             self.checkpoint_key.as_bytes(),

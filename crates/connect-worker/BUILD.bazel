@@ -14,7 +14,7 @@ crate_library(
 )
 
 crate_binary(
-    name = "crabka-connect-worker",
+    name = "krabka-connect-worker",
     crate_root = "src/main.rs",
     lib = "connect-worker",
 )

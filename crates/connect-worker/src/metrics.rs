@@ -26,7 +26,7 @@ impl WorkerMetrics {
         let records_produced = Counter::default();
         let checkpoints_saved = Counter::default();
         let errors = Counter::default();
-        let mut registry = Registry::with_prefix("crabka_connect_worker");
+        let mut registry = Registry::with_prefix("krabka_connect_worker");
         registry.register("live", "1 while the worker process is live.", live.clone());
         registry.register(
             "ready",

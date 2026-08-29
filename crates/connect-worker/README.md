@@ -1,9 +1,9 @@
-# crabka-connect-worker
+# krabka-connect-worker
 
-`crabka-connect-worker` runs one `PostgreSQL` logical-decoding source connector
+`krabka-connect-worker` runs one `PostgreSQL` logical-decoding source connector
 per process and writes its change records to Kafka. It uses an idempotent
 producer with `acks=all` and persists the acknowledged `PostgreSQL` LSN in the
-compacted `__crabka_connect_offsets` topic, keyed by connector and source
+compacted `__krabka_connect_offsets` topic, keyed by connector and source
 identity.
 At startup it registers the shared CDC key and value Protobuf schemas through
 the configured Schema Registry and frames records with the allocated IDs.

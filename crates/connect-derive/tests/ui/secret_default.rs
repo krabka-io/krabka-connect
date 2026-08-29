@@ -1,5 +1,5 @@
-use crabka_connect::SecretString;
-use crabka_connect_derive::ConnectorConfig;
+use krabka_connect::SecretString;
+use krabka_connect_derive::ConnectorConfig;
 
 #[derive(ConnectorConfig)]
 struct SecretDefaultConfig {

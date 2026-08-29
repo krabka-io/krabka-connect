@@ -1,18 +1,18 @@
-# crabka-connect
+# krabka-connect
 
-[![Crates.io](https://img.shields.io/crates/v/crabka-connect.svg)](https://crates.io/crates/crabka-connect)
-[![Docs.rs](https://docs.rs/crabka-connect/badge.svg)](https://docs.rs/crabka-connect)
+[![Crates.io](https://img.shields.io/crates/v/krabka-connect.svg)](https://crates.io/crates/krabka-connect)
+[![Docs.rs](https://docs.rs/krabka-connect/badge.svg)](https://docs.rs/krabka-connect)
 [![CI](https://github.com/robot-head/crabka/actions/workflows/ci.yml/badge.svg)](https://github.com/robot-head/crabka/actions/workflows/ci.yml)
 
-Connector-framework SPI for Crabka sources, sinks, converters, and embedded
+Connector-framework SPI for Krabka sources, sinks, converters, and embedded
 runtimes.
 
-Part of [Crabka](https://github.com/robot-head/crabka), a Rust implementation
+Part of [Krabka](https://github.com/robot-head/crabka), a Rust implementation
 of Apache Kafka-compatible infrastructure and clients.
 
 ## Overview
 
-`crabka-connect` defines the traits and data model for connector authors. It is
+`krabka-connect` defines the traits and data model for connector authors. It is
 the shared SPI for CDC sources, telemetry sinks, byte converters, typed schema
 converters, and connector configuration. It also holds the single-process
 runtime that pipes a source into a sink.
@@ -33,7 +33,7 @@ the process that owns their lifecycle.
   bytes.
 - `ByteIdentity` for byte-for-byte passthrough.
 - `SchemaConverter<T>` for Confluent-framed Avro, Protobuf, or JSON payloads
-  through `crabka-schema-serde`.
+  through `krabka-schema-serde`.
 - `ConnectorRuntime` for the sequential `poll -> put -> commit -> checkpoint ->
   acknowledge` loop.
 - `ConfigDef`, `ConnectorConfig`, secret resolution, typed config extraction,
@@ -54,7 +54,7 @@ short-lived tools. A production connector should supply a durable
 ## Install
 
 ```sh
-cargo add crabka-connect
+cargo add krabka-connect
 cargo add serde_json
 ```
 
@@ -65,7 +65,7 @@ For workspace development, use the path dependency from this repository.
 Define typed connector configuration with the default `derive` feature:
 
 ```rust,no_run
-use crabka_connect::{ConfigDef, ConnectorConfig, EnvSecretResolver, SecretString};
+use krabka_connect::{ConfigDef, ConnectorConfig, EnvSecretResolver, SecretString};
 use serde_json::json;
 
 #[derive(ConnectorConfig)]
@@ -80,7 +80,7 @@ struct PostgresSourceConfig {
     schema: String,
 }
 
-# async fn build() -> crabka_connect::ConfigResult<PostgresSourceConfig> {
+# async fn build() -> krabka_connect::ConfigResult<PostgresSourceConfig> {
 let raw = serde_json::Map::from_iter([
     ("database_url".to_string(), json!("postgres://localhost/app")),
     (
@@ -102,15 +102,15 @@ explicitly allows them.
 
 ## Cargo Features
 
-- `derive` - enables and reexports `crabka-connect-derive::ConnectorConfig`.
+- `derive` - enables and reexports `krabka-connect-derive::ConnectorConfig`.
   This feature is enabled by default.
 
 ## Documentation
 
-- [API documentation](https://docs.rs/crabka-connect)
-- [Derive macro crate](https://crates.io/crates/crabka-connect-derive)
-- [Schema serdes](https://crates.io/crates/crabka-schema-serde)
-- [Crabka repository](https://github.com/robot-head/crabka)
+- [API documentation](https://docs.rs/krabka-connect)
+- [Derive macro crate](https://crates.io/crates/krabka-connect-derive)
+- [Schema serdes](https://crates.io/crates/krabka-schema-serde)
+- [Krabka repository](https://github.com/robot-head/crabka)
 
 ## License
 

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crabka_connect::{
+use krabka_connect::{
     ConfigDef, ConfigError, ConnectorConfig, EnvSecretResolver, FromResolvedValue, ResolveOptions,
     ResolvedConfig, SecretString,
 };
@@ -35,7 +35,7 @@ impl ConnectorConfig for ManualConfig {
             .default("poll_interval", Duration::KIND, json!(1500))
     }
 
-    fn from_resolved(config: &ResolvedConfig) -> crabka_connect::ConfigResult<Self> {
+    fn from_resolved(config: &ResolvedConfig) -> krabka_connect::ConfigResult<Self> {
         Ok(Self {
             database_url: String::from_resolved_value(config, "database_url")?,
             password: SecretString::from_resolved_value(config, "password")?,

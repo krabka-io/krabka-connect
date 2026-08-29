@@ -5,9 +5,9 @@
 //! [`Checkpoint`] records to `<source>.checkpoints.internal` on the TARGET cluster.
 
 use bytes::Bytes;
-use crabka_client_admin::AdminClient;
-use crabka_client_producer::{Acks, Producer, ProducerRecord};
-use crabka_units::{
+use krabka_client_admin::AdminClient;
+use krabka_client_producer::{Acks, Producer, ProducerRecord};
+use krabka_units::{
     fmt::Human as _,
     prelude::{Time, TimeExt as _},
 };
@@ -38,7 +38,7 @@ pub struct CheckpointParams {
     /// Selector for which consumer groups to checkpoint.
     pub group_selector: Selector,
     /// Optional TLS/SASL security applied to the target producer and admin.
-    pub security: Option<crabka_client_core::security::ClientSecurity>,
+    pub security: Option<krabka_client_core::security::ClientSecurity>,
 }
 
 /// One translation pass: reads source group offsets, translates them with
@@ -103,14 +103,14 @@ async fn run_once_with_runtime_policy(
     // 2. Connect to the source cluster to list group offsets.
     let mut admin = AdminClient::connect_with_options(
         std::slice::from_ref(&params.source_bootstrap),
-        crabka_client_core::ConnectionOptions {
-            dns_timeout: crabka_client_core::ClientDnsTimeout::new(
+        krabka_client_core::ConnectionOptions {
+            dns_timeout: krabka_client_core::ClientDnsTimeout::new(
                 runtime_policy.client_dns_timeout,
             )
             .map_err(ReplicatorError::Client)?,
             connect_timeout: runtime_policy.client_connect_timeout,
             request_timeout: runtime_policy.client_request_timeout,
-            client_id: "crabka-operator".to_owned(),
+            client_id: "krabka-operator".to_owned(),
             dispatch_queue_capacity: client_resource_policy.dispatch_queue_capacity,
             frame_max: client_resource_policy.frame_max,
             security: None, // source cluster: target security does not apply
@@ -127,7 +127,7 @@ async fn run_once_with_runtime_policy(
 
     let groups: Vec<String> = all_groups
         .into_iter()
-        .filter(|g| !g.starts_with("crabka-replicator-"))
+        .filter(|g| !g.starts_with("krabka-replicator-"))
         .filter(|g| params.group_selector.matches(g))
         .collect();
     tracing::Span::current().record("groups", groups.len());
@@ -321,9 +321,9 @@ impl CheckpointTask {
 /// bootstrap.
 async fn build_producer(
     bootstrap: &str,
-    security: Option<crabka_client_core::security::ClientSecurity>,
+    security: Option<krabka_client_core::security::ClientSecurity>,
     client_resource_policy: ClientResourcePolicy,
-) -> Result<Producer, crabka_client_producer::ProducerError> {
+) -> Result<Producer, krabka_client_producer::ProducerError> {
     let builder = Producer::builder()
         .bootstrap(bootstrap)
         .dispatch_queue_capacity(client_resource_policy.dispatch_queue_capacity.get())
@@ -350,12 +350,12 @@ mod tests {
     async fn writes_translated_checkpoints() {
         let s_dir = tempfile::TempDir::new().unwrap();
         let t_dir = tempfile::TempDir::new().unwrap();
-        let source = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let source = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             s_dir.path().to_path_buf(),
         ))
         .await
         .unwrap();
-        let target = crabka_broker::Broker::start(crabka_broker::BrokerConfig::for_tests(
+        let target = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
             t_dir.path().to_path_buf(),
         ))
         .await

@@ -2,7 +2,7 @@ use std::collections::{HashSet, VecDeque};
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use crabka_connect::{ConnectError, ConnectRecord, OffsetValue, Source, SourceOffset};
+use krabka_connect::{ConnectError, ConnectRecord, OffsetValue, Source, SourceOffset};
 
 use crate::{
     PgLsn, PostgresSourceConfig,
@@ -316,10 +316,10 @@ impl Source<Bytes, Bytes> for PostgresWalSource {
                     };
                     let mut record = ConnectRecord::new(Some(key), value)
                         .with_topic(diff.table.clone())
-                        .with_header("crabka.pg.table", Some(Bytes::from(diff.table.clone())))
-                        .with_header("crabka.pg.lsn", Some(Bytes::from(diff.lsn.to_string())))
+                        .with_header("krabka.pg.table", Some(Bytes::from(diff.table.clone())))
+                        .with_header("krabka.pg.lsn", Some(Bytes::from(diff.lsn.to_string())))
                         .with_header(
-                            "crabka.pg.operation",
+                            "krabka.pg.operation",
                             Some(Bytes::from_static(operation_header(diff.op).as_bytes())),
                         );
                     if let Some(commit_timestamp_ms) = diff.commit_timestamp_ms {
@@ -710,7 +710,7 @@ mod sql_tests {
                 .expect_err("incompatible slot should fail");
 
         match error {
-            crabka_connect::ConnectError::Backend(message) => {
+            krabka_connect::ConnectError::Backend(message) => {
                 check!(
                     (
                         message.contains("replication slot \"slot_a\" is not compatible"),
@@ -729,8 +729,8 @@ mod sql_tests {
 mod tests {
     use assert2::check;
     use bytes::Bytes;
-    use crabka_connect::{SecretString, Source as _};
-    use crabka_schema_serde::wire::MAGIC;
+    use krabka_connect::{SecretString, Source as _};
+    use krabka_schema_serde::wire::MAGIC;
 
     use super::{LogicalEvent, PostgresWalSource, validate_database};
     use crate::{
@@ -741,7 +741,7 @@ mod tests {
     };
 
     fn header_value(
-        record: &crabka_connect::ConnectRecord<bytes::Bytes, bytes::Bytes>,
+        record: &krabka_connect::ConnectRecord<bytes::Bytes, bytes::Bytes>,
         key: &str,
     ) -> bytes::Bytes {
         record
@@ -757,7 +757,7 @@ mod tests {
             schema_registry_url: "http://localhost:8081".to_owned(),
             database_url: SecretString::new("postgres://localhost/app"),
             slot_name: slot_name.to_owned(),
-            publication_name: "crabka_connect".to_owned(),
+            publication_name: "krabka_connect".to_owned(),
             schema: "public".to_owned(),
             table_names: vec!["orders".to_owned()],
             max_messages_per_poll: 1000,
@@ -849,9 +849,9 @@ mod tests {
                 record.topic.as_deref(),
                 record.partition,
                 record.timestamp,
-                header_value(&record, "crabka.pg.table"),
-                header_value(&record, "crabka.pg.lsn"),
-                header_value(&record, "crabka.pg.operation"),
+                header_value(&record, "krabka.pg.table"),
+                header_value(&record, "krabka.pg.lsn"),
+                header_value(&record, "krabka.pg.operation"),
                 source.checkpoint(),
             ) == (
                 Some(MAGIC),
@@ -892,9 +892,9 @@ mod tests {
                 record.topic.as_deref(),
                 record.partition,
                 record.timestamp,
-                header_value(&record, "crabka.pg.table"),
-                header_value(&record, "crabka.pg.lsn"),
-                header_value(&record, "crabka.pg.operation"),
+                header_value(&record, "krabka.pg.table"),
+                header_value(&record, "krabka.pg.lsn"),
+                header_value(&record, "krabka.pg.operation"),
             ) == (
                 true,
                 false,
@@ -964,7 +964,7 @@ mod tests {
             .expect("poll succeeds")
             .expect("later row emits");
 
-        check!(header_value(&record, "crabka.pg.lsn").as_ref() == b"0/2B");
+        check!(header_value(&record, "krabka.pg.lsn").as_ref() == b"0/2B");
         check!(source.checkpoint() == Some(PgLsn(0x2b).to_source_offset("app", "slot_a")));
         check!(source.poll().await.expect("poll succeeds").is_none());
     }
@@ -988,7 +988,7 @@ mod tests {
             .expect("poll succeeds")
             .expect("first row emits");
 
-        check!(header_value(&record, "crabka.pg.lsn").as_ref() == b"0/2A");
+        check!(header_value(&record, "krabka.pg.lsn").as_ref() == b"0/2A");
         check!(source.poll().await.expect("poll succeeds").is_none());
         check!(source.checkpoint() == Some(PgLsn(0x2a).to_source_offset("app", "slot_a")));
     }
@@ -1015,23 +1015,23 @@ mod tests {
 
         let error = source.seek(offset).await.expect_err("database mismatch");
 
-        check!(matches!(error, crabka_connect::ConnectError::Offset(_)));
+        check!(matches!(error, krabka_connect::ConnectError::Offset(_)));
         check!(source.checkpoint().is_none());
     }
 
     #[test]
     fn validate_database_rejects_missing_or_non_string_database_partition() {
-        let missing = crabka_connect::SourceOffset::default();
-        let mut non_string = crabka_connect::SourceOffset::default();
+        let missing = krabka_connect::SourceOffset::default();
+        let mut non_string = krabka_connect::SourceOffset::default();
         non_string
             .partition
             .0
-            .insert("database".to_owned(), crabka_connect::OffsetValue::Long(7));
+            .insert("database".to_owned(), krabka_connect::OffsetValue::Long(7));
 
         for (_name, offset) in [("missing", missing), ("non_string", non_string)] {
             assert2::assert!(matches!(
                 validate_database(&offset, "app"),
-                Err(crabka_connect::ConnectError::Offset(_))
+                Err(krabka_connect::ConnectError::Offset(_))
             ));
         }
     }
@@ -1043,7 +1043,7 @@ mod tests {
         let error = validate_database(&offset, "app").expect_err("database mismatch should fail");
 
         match error {
-            crabka_connect::ConnectError::Offset(message) => {
+            krabka_connect::ConnectError::Offset(message) => {
                 check!(message.contains("does not match expected database"));
                 check!(message.contains("other_app"));
                 check!(message.contains("app"));
@@ -1066,7 +1066,7 @@ mod tests {
             .await
             .expect_err("database mismatch rejected");
 
-        check!(matches!(error, crabka_connect::ConnectError::Offset(_)));
+        check!(matches!(error, krabka_connect::ConnectError::Offset(_)));
     }
 
     #[tokio::test]
@@ -1120,8 +1120,8 @@ mod tests {
 
         check!(
             (
-                header_value(&first, "crabka.pg.lsn"),
-                header_value(&second, "crabka.pg.lsn"),
+                header_value(&first, "krabka.pg.lsn"),
+                header_value(&second, "krabka.pg.lsn"),
                 first.timestamp,
                 second.timestamp,
                 source.checkpoint(),
@@ -1175,7 +1175,7 @@ mod tests {
 #[cfg(test)]
 mod catalog_tests {
     use assert2::check;
-    use crabka_connect::{ConnectError, SecretString, Source as _};
+    use krabka_connect::{ConnectError, SecretString, Source as _};
 
     use super::{
         PostgresWalSource, ensure_slot, initialize, validate_publication_settings,
@@ -1191,7 +1191,7 @@ mod catalog_tests {
             schema_registry_url: "http://localhost:8081".to_owned(),
             database_url: SecretString::new("postgres://localhost/app"),
             slot_name: "slot_a".to_owned(),
-            publication_name: "crabka_connect".to_owned(),
+            publication_name: "krabka_connect".to_owned(),
             schema: "public".to_owned(),
             table_names: tables,
             max_messages_per_poll: 1000,
@@ -1224,7 +1224,7 @@ mod catalog_tests {
             .expect_published_tables()
             .returning(|_, _| Ok(vec!["orders".to_owned()]));
 
-        validate_publication_tables(&catalog, "crabka_connect", "public", &["orders".to_owned()])
+        validate_publication_tables(&catalog, "krabka_connect", "public", &["orders".to_owned()])
             .await
             .expect("full coverage validates");
 
@@ -1235,7 +1235,7 @@ mod catalog_tests {
 
         let error = validate_publication_tables(
             &missing,
-            "crabka_connect",
+            "krabka_connect",
             "public",
             &["orders".to_owned()],
         )
@@ -1256,7 +1256,7 @@ mod catalog_tests {
         compatible
             .expect_publication_settings()
             .returning(|_| Ok(Some([true, true, true, false])));
-        validate_publication_settings(&compatible, "crabka_connect")
+        validate_publication_settings(&compatible, "krabka_connect")
             .await
             .expect("compatible flags validate");
 
@@ -1264,7 +1264,7 @@ mod catalog_tests {
         truncating
             .expect_publication_settings()
             .returning(|_| Ok(Some([true, true, true, true])));
-        let error = validate_publication_settings(&truncating, "crabka_connect")
+        let error = validate_publication_settings(&truncating, "krabka_connect")
             .await
             .expect_err("publishing truncate fails");
         check!(matches!(error, ConnectError::Backend(_)));
@@ -1272,7 +1272,7 @@ mod catalog_tests {
         // An absent publication row is tolerated (the create path handles it).
         let mut absent = MockPgCatalog::new();
         absent.expect_publication_settings().returning(|_| Ok(None));
-        validate_publication_settings(&absent, "crabka_connect")
+        validate_publication_settings(&absent, "krabka_connect")
             .await
             .expect("missing publication row is tolerated");
     }

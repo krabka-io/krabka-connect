@@ -1,17 +1,17 @@
 [package]
-name = "crabka-connect-postgres"
+name = "krabka-connect-postgres"
 publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 rust-version.workspace = true
-description = "Postgres logical-decoding source connector for Crabka Connect"
+description = "Postgres logical-decoding source connector for Krabka Connect"
 readme = "README.md"
 repository = "https://github.com/robot-head/crabka"
 homepage = "https://github.com/robot-head/crabka"
-documentation = "https://docs.rs/crabka-connect-postgres"
-keywords = ["kafka", "connect", "postgres", "cdc", "crabka"]
+documentation = "https://docs.rs/krabka-connect-postgres"
+keywords = ["kafka", "connect", "postgres", "cdc", "krabka"]
 categories = ["database", "asynchronous"]
 
 [lints]
@@ -19,8 +19,8 @@ workspace = true
 
 [dependencies]
 assert2 = { workspace = true }
-crabka-connect = { path = "../connect", version = "0.4.0" }
-crabka-schema-serde = { workspace = true, features = ["protobuf"] }
+krabka-connect = { path = "../connect", version = "0.4.0" }
+krabka-schema-serde = { workspace = true, features = ["protobuf"] }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 derive_more = { workspace = true }

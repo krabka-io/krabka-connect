@@ -3,9 +3,9 @@
 //! These functions panic on error. They are for use in tests only.
 
 use bytes::Bytes;
-use crabka_client_consumer::{AutoOffsetReset, Consumer};
-use crabka_client_producer::{Producer, ProducerRecord};
-use crabka_units::prelude::{StdDurationExt as _, Time, TimeExt as _, millis};
+use krabka_client_consumer::{AutoOffsetReset, Consumer};
+use krabka_client_producer::{Producer, ProducerRecord};
+use krabka_units::prelude::{StdDurationExt as _, Time, TimeExt as _, millis};
 
 /// How long each poll waits for records while draining a topic.
 const POLL_TIMEOUT: Time = millis(500);
@@ -76,7 +76,7 @@ pub async fn commit_group(bootstrap: &str, group: &str, topic: &str) {
     let mut consumer = Consumer::builder()
         .bootstrap(bootstrap)
         .group_id(group)
-        .client_id("crabka-replicator-test-util")
+        .client_id("krabka-replicator-test-util")
         .subscribe(vec![topic.to_string()])
         .auto_offset_reset(AutoOffsetReset::Earliest)
         .build()

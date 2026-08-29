@@ -159,7 +159,7 @@ mod tests {
         let resolver = EnvSecretResolver;
         let err = resolver
             .resolve(&SecretRef::Env {
-                name: "CRABKA_CONNECT_TEST_MISSING_SECRET".into(),
+                name: "KRABKA_CONNECT_TEST_MISSING_SECRET".into(),
             })
             .await
             .unwrap_err();
@@ -169,7 +169,7 @@ mod tests {
             SecretResolutionError::EnvVar {
                 name,
                 source: env::VarError::NotPresent,
-            } if name == "CRABKA_CONNECT_TEST_MISSING_SECRET"
+            } if name == "KRABKA_CONNECT_TEST_MISSING_SECRET"
         ));
     }
 

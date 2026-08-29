@@ -11,9 +11,9 @@ use std::sync::Arc;
 use anyhow::Context as _;
 use bytes::Bytes;
 pub use config::WorkerConfig;
-use crabka_connect::{ConnectorRuntime, RuntimeState};
-use crabka_connect_postgres::PostgresWalSource;
 pub use kafka::{CHECKPOINT_TOPIC, KafkaCheckpointStore, KafkaSink};
+use krabka_connect::{ConnectorRuntime, RuntimeState};
+use krabka_connect_postgres::PostgresWalSource;
 use tokio_util::sync::CancellationToken;
 
 use crate::{kafka::KafkaClientConfig, metrics::WorkerMetrics};

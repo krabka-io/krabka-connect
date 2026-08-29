@@ -9,7 +9,7 @@
 //! goes back to the unit-tested pure helpers in `source.rs`.
 
 use async_trait::async_trait;
-use crabka_connect::ConnectError;
+use krabka_connect::ConnectError;
 use tokio_postgres::{Client, NoTls};
 
 use crate::source::{

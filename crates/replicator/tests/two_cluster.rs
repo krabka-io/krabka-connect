@@ -1,4 +1,4 @@
-//! Two-cluster integration tests for `crabka-replicator`.
+//! Two-cluster integration tests for `krabka-replicator`.
 //!
 //! Test 1: selective replication, remote-topic naming, residency zero-bytes.
 //! Test 2: active/active loop prevention.
@@ -7,14 +7,14 @@ mod common;
 
 use std::collections::BTreeMap;
 
-use crabka_replicator::{
+use krabka_replicator::{
     config::{
         ClusterConfig, Delivery, FlowConfig, NamingPolicy, PolicyConfig, ReplicatorConfig,
         Residency, Selectors,
     },
     supervisor::FlowSupervisor,
 };
-use crabka_units::prelude::{TimeExt as _, secs};
+use krabka_units::prelude::{TimeExt as _, secs};
 
 // ---------------------------------------------------------------------------
 // Test 1 — selective replication, remote-topic naming, residency

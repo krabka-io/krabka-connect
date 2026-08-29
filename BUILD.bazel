@@ -1,4 +1,4 @@
-"""Root package: the public Crabka Connect surface."""
+"""Root package: the public Krabka Connect surface."""
 
 package(default_visibility = ["//visibility:public"])
 
@@ -27,10 +27,10 @@ alias(
 # The binaries this repository ships.
 alias(
     name = "connect-worker",
-    actual = "//crates/connect-worker:crabka-connect-worker",
+    actual = "//crates/connect-worker:krabka-connect-worker",
 )
 
 alias(
     name = "replicator",
-    actual = "//crates/replicator:crabka-replicator",
+    actual = "//crates/replicator:krabka-replicator",
 )

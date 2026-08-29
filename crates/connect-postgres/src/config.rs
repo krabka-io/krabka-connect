@@ -1,4 +1,4 @@
-use crabka_connect::{ConnectorConfig, SecretString};
+use krabka_connect::{ConnectorConfig, SecretString};
 
 #[derive(Debug, Clone, ConnectorConfig)]
 pub struct PostgresSourceConfig {
@@ -8,7 +8,7 @@ pub struct PostgresSourceConfig {
     pub database_url: SecretString,
     #[config(required)]
     pub slot_name: String,
-    #[config(default = "crabka_connect")]
+    #[config(default = "krabka_connect")]
     pub publication_name: String,
     #[config(default = "public")]
     pub schema: String,
@@ -20,7 +20,7 @@ pub struct PostgresSourceConfig {
 
 #[cfg(test)]
 mod tests {
-    use crabka_connect::{ConfigKind, ConnectorConfig, EnvSecretResolver, ResolveOptions};
+    use krabka_connect::{ConfigKind, ConnectorConfig, EnvSecretResolver, ResolveOptions};
     use serde_json::json;
 
     use super::PostgresSourceConfig;
@@ -54,7 +54,7 @@ mod tests {
                 "schema_registry_url".to_string(),
                 json!("http://localhost:8081"),
             ),
-            ("slot_name".to_string(), json!("crabka_slot")),
+            ("slot_name".to_string(), json!("krabka_slot")),
             ("tables".to_string(), json!(["accounts", "transactions"])),
         ]);
 
@@ -72,8 +72,8 @@ mod tests {
 
         assert2::assert!(config.database_url.expose_secret() == "postgres://localhost/app");
         assert2::assert!(config.schema_registry_url == "http://localhost:8081");
-        assert2::assert!(config.slot_name.as_str() == "crabka_slot");
-        assert2::assert!(config.publication_name.as_str() == "crabka_connect");
+        assert2::assert!(config.slot_name.as_str() == "krabka_slot");
+        assert2::assert!(config.publication_name.as_str() == "krabka_connect");
         assert2::assert!(config.schema.as_str() == "public");
         assert2::assert!(
             config.table_names.as_slice()
