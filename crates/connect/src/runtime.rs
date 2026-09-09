@@ -399,6 +399,14 @@ impl ConnectorHandle {
             ))),
         }
     }
+
+    /// Abort the connector task without draining or checkpointing it.
+    pub async fn crash(mut self) {
+        if let Some(join) = self.join.take() {
+            join.abort();
+            let _ = join.await;
+        }
+    }
 }
 
 impl Drop for ConnectorHandle {

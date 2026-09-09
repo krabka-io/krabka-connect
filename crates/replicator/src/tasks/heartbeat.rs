@@ -180,6 +180,12 @@ impl HeartbeatTask {
         let _ = self.shutdown.send(true);
         let _ = self.handle.await;
     }
+
+    /// Abort the task without a final heartbeat.
+    pub async fn crash(self) {
+        self.handle.abort();
+        let _ = self.handle.await;
+    }
 }
 
 /// Build a non-idempotent producer with `acks=All` for heartbeat emission.

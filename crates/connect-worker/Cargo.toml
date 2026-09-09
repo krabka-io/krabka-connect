@@ -45,8 +45,10 @@ tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 assert2 = { workspace = true }
+axum = { workspace = true }
 krabka-broker = { workspace = true, features = ["test-helpers"] }
 krabka-client-consumer = { workspace = true }
+krabka-schema-registry = { git = "https://github.com/krabka-io/krabka-schema-registry", rev = "ae9876d15da12e6123b77b4fc77f50bb9d162556" }
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
 tokio-postgres = { workspace = true }
