@@ -2,7 +2,7 @@
 //! checkpoint, which is at-least-once, and does not re-read the source topic
 //! from offset 0.
 //!
-//! The test shuts down a `FlowSupervisor` and starts a new one with the same
+//! The test abruptly aborts a `FlowSupervisor` and starts a new one with the same
 //! flow configuration, and therefore the same consumer group and checkpoint
 //! key. It proves that the new supervisor seeks to the committed position and
 //! delivers every record from both runs to the target, with no gap across the
@@ -10,12 +10,19 @@
 //! `SourceConsumer::seek` restores the position: it passes the loaded
 //! `SourceOffset` to `Consumer::seek`. The target count after a
 //! 10-then-restart-then-10 sequence is therefore close to 20 and not about 30.
+//!
+//! Exactly-once is scoped to the destination cluster: destination records and
+//! their source-offset checkpoint share one target transaction. No transaction
+//! spans both clusters; recovery reads that target checkpoint and seeks the
+//! source consumer to it. At-least-once keeps the same no-gap rule but may
+//! replay at most the interrupted five-record batch asserted below.
 
 mod common;
 
 use std::collections::{BTreeMap, HashSet};
 
 use assert2::check;
+use krabka_connect::{OffsetValue, SourceOffset};
 use krabka_replicator::{
     config::{ClusterConfig, Delivery, FlowConfig, NamingPolicy, ReplicatorConfig, Selectors},
     supervisor::FlowSupervisor,
@@ -64,6 +71,19 @@ fn make_config(
     }
 }
 
+async fn committed_source_position(target: &str) -> SourceOffset {
+    let value = krabka_replicator::admin_util::read_last_value_for_key(
+        target,
+        "krabka-replicator-offsets",
+        b"us-east__eu-west",
+        None,
+    )
+    .await
+    .expect("read checkpoint ledger")
+    .expect("checkpoint ledger entry");
+    serde_json::from_slice(&value).expect("decode checkpoint ledger")
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn restart_resumes_with_no_gap() {
     // ── Step 1: start both brokers (keep handles alive for the whole test) ────
@@ -88,8 +108,8 @@ async fn restart_resumes_with_no_gap() {
     // Wait until all 10 initial records arrive on the target.
     common::await_count(&target.bootstrap, "us-east.orders", 10, secs(30)).await;
 
-    // Gracefully stop the replicator.
-    sup.shutdown().await;
+    // Model a killed process: do not drain workers or flush a final checkpoint.
+    sup.crash().await;
 
     // ── Step 4: produce second batch while supervisor is down ─────────────────
     for i in 10..20u32 {
@@ -118,7 +138,7 @@ async fn restart_resumes_with_no_gap() {
 
     let total = common::count(&target.bootstrap, "us-east.orders").await;
     let duplicates = total.saturating_sub(20);
-    println!("target record count after restart: {total}  (resume target: ~20, ceiling: <30)");
+    println!("target record count after restart: {total}  (resume target: ~20, ceiling: 30)");
     println!("distinct keys on target: {}", keys.len());
     println!("duplicate (re-delivered) records: {duplicates}");
 
@@ -132,30 +152,28 @@ async fn restart_resumes_with_no_gap() {
     }
 
     // (b) RESUMED, not re-read from 0. A full re-read would deliver the first
-    //     batch (k0..k9) twice → total ~30. A true resume re-reads at most the
-    //     in-flight batch at shutdown, so the count stays close to 20 and well
-    //     under 30. We allow a small at-least-once boundary re-delivery (a few
-    //     records), but not a wholesale reprocess of the 10 pre-crash records.
+    //     batch (k0..k9) twice → total 30. A true resume re-reads at most the
+    //     in-flight batch at shutdown, so one full batch of duplicates is valid.
     check!(
         total >= 20,
         "expected at least 20 records on target after restart, got {total}"
     );
     check!(
-        total < 30,
-        "target re-read the whole pre-crash batch (total {total} >= 30) — \
+        total <= 30,
+        "target replay exceeded one pre-crash batch (total {total} > 30) — \
          restart did NOT resume from the checkpoint"
     );
-    // Bound the duplicates tightly: at-least-once permits the in-flight batch to
-    // re-deliver, not ~10 records. The runtime commits in 500ms intervals over a
-    // 10-record source, so at most a handful straddle the shutdown boundary.
     check!(
-        duplicates <= 5,
-        "too many duplicates after restart ({duplicates}) — expected a small \
-         boundary re-delivery, not a full re-read of the first batch"
+        duplicates <= 10,
+        "too many duplicates after restart ({duplicates}) — expected at most \
+         one in-flight batch"
     );
 
     // ── Step 8: clean shutdown ────────────────────────────────────────────────
     sup2.shutdown().await;
+    let checkpoint = committed_source_position(&target.bootstrap).await;
+    println!("checkpoint ledger: {checkpoint:?}");
+    check!(checkpoint.position.get("orders-0") == Some(&OffsetValue::Long(20)));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -176,7 +194,7 @@ async fn exactly_once_restart_does_not_duplicate_committed_output() {
     .await
     .expect("first exactly-once supervisor run");
     common::await_count(&target.bootstrap, "us-east.orders", 10, secs(30)).await;
-    first.shutdown().await;
+    first.crash().await;
     assert2::assert!(common::count(&target.bootstrap, "us-east.orders").await == 10);
     for i in 10..20u32 {
         let key = format!("k{i}");
@@ -191,6 +209,8 @@ async fn exactly_once_restart_does_not_duplicate_committed_output() {
     .await
     .expect("second exactly-once supervisor run");
     common::await_count(&target.bootstrap, "us-east.orders", 20, secs(30)).await;
+    let checkpoint = committed_source_position(&target.bootstrap).await;
+    check!(checkpoint.position.get("orders-0") == Some(&OffsetValue::Long(20)));
     // Settle after restart. With a missing or non-atomic checkpoint the first
     // ten source records replay here and the committed count grows above twenty.
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;

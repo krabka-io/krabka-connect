@@ -53,6 +53,8 @@ jobs:
         run: aspect lint --aspect=//tools/lint:linters.bzl%clippy
       - name: build
         run: aspect build //...
+      - name: compile PostgreSQL CDC acceptance
+        run: bazel build //crates/connect-worker:postgres_cdc_test
       - name: test
         run: aspect test //...
   # LCOV over the first-party crates. Separate from `ci` because instrumented
@@ -100,6 +102,47 @@ jobs:
         with:
           name: rustdoc
           path: bazel-bin/crates/**/*.rustdoc
+          if-no-files-found: error
+  postgres-cdc:
+    name: PostgreSQL CDC · registry matrix
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aspect-build/setup-aspect@2306377a61c45954ab2df7c7311698b109364352 # v2026.26.9
+        with:
+          aspect-api-token: ${{ secrets.ASPECT_API_TOKEN }}
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-postgres-cdc
+          repository-cache: true
+      - name: Run both registry backends
+        run: |
+          set -euo pipefail
+          bazel test --cache_test_results=no //crates/connect-worker:postgres_cdc_test \
+            --test_arg=--ignored \
+            --test_arg=--exact \
+            --test_arg=postgres_cdc_acceptance_matrix_survives_force_killed_worker \
+            --test_arg=--nocapture \
+            --test_output=streamed 2>&1 | tee postgres-cdc.log
+          grep -Eq 'test result: ok. 1 passed' postgres-cdc.log
+      - name: Record qualification inputs
+        if: always()
+        run: |
+          {
+            echo "krabka-connect=$(git rev-parse HEAD)"
+            cargo metadata --locked --format-version 1 |
+              jq -r '.packages[] | select(.name == "krabka-broker" or .name == "krabka-schema-registry") | "\(.name)=\(.source)"'
+            docker image inspect postgres:18 --format 'postgres={{index .RepoDigests 0}}' 2>/dev/null || true
+            docker image inspect mirror.gcr.io/confluentinc/cp-schema-registry:7.7.1 --format 'confluent-registry={{index .RepoDigests 0}}' 2>/dev/null || true
+          } > postgres-cdc-qualification.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: postgres-cdc-qualification
+          path: |
+            postgres-cdc.log
+            postgres-cdc-qualification.txt
           if-no-files-found: error
   # A mutation sweep rebuilds and re-runs a crate's unit tests once per mutant,
   # so it is far too slow to gate a pull request.

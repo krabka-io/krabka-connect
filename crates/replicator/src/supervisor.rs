@@ -8,7 +8,10 @@
 use krabka_client_admin::AdminClient;
 use krabka_connect::RuntimeState;
 use krabka_units::prelude::TimeExt as _;
-use tokio::{sync::watch, task::JoinHandle};
+use tokio::{
+    sync::{oneshot, watch},
+    task::JoinHandle,
+};
 
 use crate::{
     config::{
@@ -87,6 +90,7 @@ fn is_internal(name: &str) -> bool {
 /// Control plane that owns and supervises the per-flow replication workers.
 pub struct FlowSupervisor {
     shutdown: watch::Sender<bool>,
+    crash: Option<oneshot::Sender<()>>,
     handle: JoinHandle<()>,
 }
 
@@ -224,11 +228,18 @@ impl FlowSupervisor {
         }
 
         let (shutdown, mut rx) = watch::channel(false);
+        let (crash, mut crash_rx) = oneshot::channel();
         let handle = tokio::spawn(async move {
             let mut ticker = tokio::time::interval(runtime_policy.supervisor_interval.to_std());
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 tokio::select! {
+                    Ok(()) = &mut crash_rx => {
+                        for (_spec, worker) in entries {
+                            worker.crash().await;
+                        }
+                        return;
+                    }
                     res = rx.changed() => {
                         // Sender dropped or shutdown signalled — stop supervising.
                         if res.is_err() || *rx.borrow() {
@@ -271,7 +282,11 @@ impl FlowSupervisor {
             }
         });
 
-        Ok(Self { shutdown, handle })
+        Ok(Self {
+            shutdown,
+            crash: Some(crash),
+            handle,
+        })
     }
 
     /// Signal the supervision loop to stop and gracefully shut down all workers.
@@ -279,6 +294,14 @@ impl FlowSupervisor {
     #[cfg_attr(test, mutants::skip)]
     pub async fn shutdown(self) {
         let _ = self.shutdown.send(true);
+        let _ = self.handle.await;
+    }
+
+    /// Abort the supervisor and its owned workers without draining them.
+    pub async fn crash(mut self) {
+        if let Some(crash) = self.crash.take() {
+            let _ = crash.send(());
+        }
         let _ = self.handle.await;
     }
 }

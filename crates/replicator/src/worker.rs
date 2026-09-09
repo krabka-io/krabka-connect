@@ -249,6 +249,15 @@ impl FlowWorker {
         self.heartbeat.shutdown().await;
         self.checkpoint.shutdown().await;
     }
+
+    /// Abort every owned task without draining records or checkpoints.
+    pub async fn crash(self) {
+        tokio::join!(
+            self.runtime.crash(),
+            self.heartbeat.crash(),
+            self.checkpoint.crash(),
+        );
+    }
 }
 
 #[cfg(test)]

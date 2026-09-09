@@ -3,18 +3,25 @@
 
 //! Docker-backed acceptance proof for the managed Postgres CDC worker.
 
-use std::{io, sync::Arc, time::Duration};
+use std::{
+    io::{self, Read as _, Write as _},
+    net::SocketAddr,
+    process::{Child, Command},
+    time::Duration,
+};
 
 use assert2::assert;
 use bytes::Bytes;
 use krabka_broker::{Broker, BrokerConfig};
 use krabka_client_consumer::{AutoOffsetReset, Consumer, ConsumerRecord};
-use krabka_connect::{ConnectorHandle, ConnectorRuntime, RuntimeState, SecretString};
 use krabka_connect_postgres::{
-    ColumnValue, EntityKey, PostgresSourceConfig, PostgresWalSource, model::ScalarValue,
-    schema::PostgresProtoEncoder,
+    ColumnValue, EntityKey, model::ScalarValue, schema::PostgresProtoEncoder,
 };
-use krabka_connect_worker::{KafkaCheckpointStore, KafkaSink};
+use krabka_schema_registry::{
+    config::{RegistryConfig, RegistryRuntimeConfig, SecurityConfig},
+    kafkastore::KafkaStore,
+    rest::{self, AppState},
+};
 use krabka_units::millis;
 use testcontainers::{
     ContainerAsync, GenericImage, ImageExt,
@@ -23,6 +30,7 @@ use testcontainers::{
 };
 use tokio::{task::JoinHandle, time::timeout};
 use tokio_postgres::{Client, NoTls};
+use tokio_util::sync::CancellationToken;
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -39,6 +47,52 @@ const TOPIC: &str = "db.public.orders";
 const CONNECTOR_ID: &str = "orders-cdc-acceptance";
 const WAIT: Duration = Duration::from_secs(30);
 
+#[derive(Clone, Copy, Debug)]
+enum RegistryFlavor {
+    Krabka,
+    Confluent,
+}
+
+struct WorkerProcess(Child);
+
+impl WorkerProcess {
+    fn kill(mut self) -> TestResult {
+        self.0.kill()?;
+        let status = self.0.wait()?;
+        assert!(!status.success(), "force-killed worker exited successfully");
+        Ok(())
+    }
+}
+
+impl Drop for WorkerProcess {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+enum RunningRegistry {
+    Krabka {
+        cancel: CancellationToken,
+        task: JoinHandle<io::Result<()>>,
+    },
+    Confluent(Box<ContainerAsync<GenericImage>>),
+}
+
+impl RunningRegistry {
+    async fn stop(self) -> TestResult {
+        match self {
+            Self::Krabka { cancel, task } => {
+                cancel.cancel();
+                task.abort();
+                let _ = task.await;
+            }
+            Self::Confluent(container) => drop(container),
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ObservedRecord {
     key: Option<Vec<u8>>,
@@ -48,11 +102,19 @@ struct ObservedRecord {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires Docker"]
-async fn postgres_cdc_survives_checkpointed_worker_restart() -> TestResult {
+async fn postgres_cdc_acceptance_matrix_survives_force_killed_worker() -> TestResult {
     let _ = tracing_subscriber::fmt()
         .with_test_writer()
         .with_max_level(tracing::Level::INFO)
         .try_init();
+
+    for registry in [RegistryFlavor::Krabka, RegistryFlavor::Confluent] {
+        run_acceptance_case(registry).await?;
+    }
+    Ok(())
+}
+
+async fn run_acceptance_case(registry_flavor: RegistryFlavor) -> TestResult {
     let postgres = start_postgres().await?;
     let postgres_port = postgres.get_host_port_ipv4(POSTGRES_PORT.tcp()).await?;
     let database_url = format!("postgres://postgres:postgres@127.0.0.1:{postgres_port}/app");
@@ -69,12 +131,9 @@ async fn postgres_cdc_survives_checkpointed_worker_restart() -> TestResult {
     broker_config.advertised_listener = format!("{gateway}:{}", broker_addr.port());
     let broker = Broker::start(broker_config).await?;
     let bootstrap = format!("{gateway}:{}", broker.listen_addr().port());
-    let registry = start_registry(&bootstrap).await?;
-    let registry_port = registry.get_host_port_ipv4(REGISTRY_PORT.tcp()).await?;
-    let registry_url = format!("http://127.0.0.1:{registry_port}");
+    let (registry, registry_url) = start_registry(registry_flavor, &bootstrap).await?;
 
-    let first_runtime = start_connector(&database_url, &bootstrap, &registry_url).await?;
-    wait_for_running(&first_runtime).await?;
+    let first_worker = start_worker(&database_url, &bootstrap, &registry_url).await?;
     database
         .batch_execute(
             "BEGIN;
@@ -85,13 +144,8 @@ async fn postgres_cdc_survives_checkpointed_worker_restart() -> TestResult {
         )
         .await?;
 
-    if let Err(wait_error) = wait_for_record_count(&bootstrap, 3).await {
-        let runtime_error = first_runtime.shutdown().await.err();
-        return Err(
-            io::Error::other(format!("{wait_error}; connector error: {runtime_error:?}")).into(),
-        );
-    }
-    let first = read_records(&bootstrap, "orders-cdc-first", 3).await?;
+    wait_for_record_count(&bootstrap, 3).await?;
+    let first = read_records(&bootstrap, "orders-cdc-first", 3, None).await?;
     let encoder = PostgresProtoEncoder::from_registry(&registry_url).await?;
     let key_one = encoded_key(&encoder, 1)?;
     assert!(first.len() == 3);
@@ -112,27 +166,39 @@ async fn postgres_cdc_survives_checkpointed_worker_restart() -> TestResult {
     assert!(first[0].value != first[1].value);
     assert!(first[2].value.is_none());
 
-    first_runtime.shutdown().await?;
+    first_worker.kill()?;
 
-    let second_runtime = start_connector(&database_url, &bootstrap, &registry_url).await?;
-    wait_for_running(&second_runtime).await?;
+    let second_worker = start_worker(&database_url, &bootstrap, &registry_url).await?;
     database
-        .execute(
-            "INSERT INTO public.orders (id, status) VALUES (2, 'new')",
-            &[],
+        .batch_execute(
+            "ALTER TABLE public.orders ADD COLUMN note TEXT;
+             INSERT INTO public.orders (id, status) VALUES (2, 'new');
+             UPDATE public.orders SET note = 'schema-v2' WHERE id = 2;",
         )
         .await?;
 
-    wait_for_record_count(&bootstrap, 4).await?;
-    let final_records = read_records(&bootstrap, "orders-cdc-final", 4).await?;
-    assert!(final_records.len() == 4);
+    wait_for_at_least_record_count(&bootstrap, 5).await?;
+    let key_two = encoded_key(&encoder, 2)?;
+    let final_records =
+        read_records(&bootstrap, "orders-cdc-final", 5, Some(key_two.as_ref())).await?;
+    let replayed = final_records.len().saturating_sub(5);
+    assert!(
+        replayed <= 3,
+        "at-least-once replay exceeded one source batch"
+    );
     assert!(final_records[..3] == first);
-    assert!(final_records[3].operation == "insert");
-    assert!(final_records[3].key.as_deref() == Some(encoded_key(&encoder, 2)?.as_ref()));
-    assert!(final_records[3].value.is_some());
+    let evolved = final_records
+        .iter()
+        .filter(|record| record.key.as_deref() == Some(key_two.as_ref()))
+        .collect::<Vec<_>>();
+    assert!(evolved.len() == 2);
+    assert!(evolved[0].operation == "insert");
+    assert!(evolved[1].operation == "update");
+    assert!(evolved.iter().all(|record| record.value.is_some()));
+    assert!(evolved[0].value != evolved[1].value);
 
-    second_runtime.shutdown().await?;
-    drop(registry);
+    second_worker.kill()?;
+    registry.stop().await?;
     broker.shutdown().await;
     drop(database);
     database_connection.await??;
@@ -214,82 +280,125 @@ async fn connect_postgres(
     Ok(connected)
 }
 
-/// Starts a Confluent Schema Registry against `bootstrap`.
-///
-/// The registry is the reference implementation this project's own registry is
-/// tested for conformance against, so the connector talks to the same REST API
-/// here as it would in production. It is a container rather than an in-process
-/// server because the in-process one lives in a different repository now.
-///
-/// `bootstrap` must be an address the container can route to; see
-/// [`docker_gateway`].
-async fn start_registry(bootstrap: &str) -> TestResult<ContainerAsync<GenericImage>> {
-    let registry = timeout(
-        CONTAINER_START_TIMEOUT,
-        GenericImage::new("mirror.gcr.io/confluentinc/cp-schema-registry", "7.7.1")
-            .with_wait_for(WaitFor::message_on_stdout(
-                "Server started, listening for requests",
+async fn start_registry(
+    flavor: RegistryFlavor,
+    bootstrap: &str,
+) -> TestResult<(RunningRegistry, String)> {
+    match flavor {
+        RegistryFlavor::Krabka => {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+            let address = listener.local_addr()?;
+            let cancel = CancellationToken::new();
+            let store = KafkaStore::start(
+                &RegistryConfig {
+                    bootstrap: bootstrap.to_owned(),
+                    schemas_topic: "_schemas".to_owned(),
+                    schemas_topic_rf: 1,
+                    client_id: "connect-cdc-acceptance".to_owned(),
+                    advertised_url: format!("http://{address}"),
+                    group_id: "schema-registry".to_owned(),
+                    leader_eligibility: true,
+                    runtime: RegistryRuntimeConfig::default(),
+                    security: SecurityConfig::default(),
+                },
+                cancel.clone(),
+            )
+            .await?;
+            let task = tokio::spawn(async move {
+                axum::serve(listener, rest::router(AppState { store })).await
+            });
+            Ok((
+                RunningRegistry::Krabka { cancel, task },
+                format!("http://{address}"),
             ))
-            .with_env_var("SCHEMA_REGISTRY_HOST_NAME", "localhost")
-            .with_env_var(
-                "SCHEMA_REGISTRY_LISTENERS",
-                format!("http://0.0.0.0:{REGISTRY_PORT}"),
+        }
+        RegistryFlavor::Confluent => {
+            let registry = timeout(
+                CONTAINER_START_TIMEOUT,
+                GenericImage::new("mirror.gcr.io/confluentinc/cp-schema-registry", "7.7.1")
+                    .with_wait_for(WaitFor::message_on_stdout(
+                        "Server started, listening for requests",
+                    ))
+                    .with_env_var("SCHEMA_REGISTRY_HOST_NAME", "localhost")
+                    .with_env_var(
+                        "SCHEMA_REGISTRY_LISTENERS",
+                        format!("http://0.0.0.0:{REGISTRY_PORT}"),
+                    )
+                    .with_env_var(
+                        "SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS",
+                        format!("PLAINTEXT://{bootstrap}"),
+                    )
+                    .with_env_var("SCHEMA_REGISTRY_KAFKASTORE_TOPIC", "_schemas")
+                    .with_env_var("SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR", "1")
+                    .start(),
             )
-            .with_env_var(
-                "SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS",
-                format!("PLAINTEXT://{bootstrap}"),
-            )
-            .with_env_var("SCHEMA_REGISTRY_KAFKASTORE_TOPIC", "_schemas")
-            .with_env_var("SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR", "1")
-            .start(),
-    )
-    .await
-    .map_err(|_| io::Error::other("the schema registry did not start in time"))??;
-    Ok(registry)
+            .await
+            .map_err(|_| io::Error::other("the schema registry did not start in time"))??;
+            let port = registry.get_host_port_ipv4(REGISTRY_PORT.tcp()).await?;
+            Ok((
+                RunningRegistry::Confluent(Box::new(registry)),
+                format!("http://127.0.0.1:{port}"),
+            ))
+        }
+    }
 }
 
-async fn start_connector(
+async fn start_worker(
     database_url: &str,
     bootstrap: &str,
     schema_registry_url: &str,
-) -> TestResult<ConnectorHandle> {
-    let source = PostgresWalSource::connect(PostgresSourceConfig {
-        schema_registry_url: schema_registry_url.to_owned(),
-        database_url: SecretString::new(database_url),
-        slot_name: "orders_krabka".to_owned(),
-        publication_name: "krabka_connect".to_owned(),
-        schema: "public".to_owned(),
-        table_names: vec!["orders".to_owned()],
-        max_messages_per_poll: 100,
-    })
-    .await?;
-    let sink = KafkaSink::start(bootstrap, "db").await?;
-    let checkpoints = Arc::new(KafkaCheckpointStore::start(bootstrap, CONNECTOR_ID).await?);
-    Ok(ConnectorRuntime::<Bytes, Bytes>::new()
-        .add_source(source)
-        .add_sink(sink)
-        .checkpoint_store(checkpoints)
-        .max_batch(16)
-        .commit_interval(Duration::from_millis(50))
-        .poll_backoff(Duration::from_millis(20))
-        .run())
+) -> TestResult<WorkerProcess> {
+    let health = reserve_address()?;
+    let child = Command::new(env!("CARGO_BIN_EXE_krabka-connect-worker"))
+        .args([
+            "--connector-id",
+            CONNECTOR_ID,
+            "--kafka-bootstrap",
+            bootstrap,
+            "--schema-registry-url",
+            schema_registry_url,
+            "--postgres-url",
+            database_url,
+            "--postgres-slot",
+            "orders_krabka",
+            "--postgres-tables",
+            "orders",
+            "--batch-size",
+            "16",
+            "--commit-interval-ms",
+            "50",
+            "--poll-backoff-ms",
+            "20",
+            "--health-listen",
+            &health.to_string(),
+        ])
+        .spawn()?;
+    let process = WorkerProcess(child);
+    wait_for_ready(health).await?;
+    Ok(process)
 }
 
-async fn wait_for_running(handle: &ConnectorHandle) -> TestResult {
+async fn wait_for_ready(address: SocketAddr) -> TestResult {
     timeout(WAIT, async {
         loop {
-            match handle.state() {
-                RuntimeState::Running => return Ok::<(), io::Error>(()),
-                RuntimeState::Failed | RuntimeState::Stopped => {
-                    return Err(io::Error::other(format!(
-                        "connector stopped in state {:?}",
-                        handle.state()
-                    )));
-                }
-                RuntimeState::Starting | RuntimeState::Paused | RuntimeState::Draining => {
-                    tokio::time::sleep(Duration::from_millis(20)).await;
+            if let Ok(mut stream) =
+                std::net::TcpStream::connect_timeout(&address, Duration::from_millis(100))
+            {
+                stream.set_read_timeout(Some(Duration::from_millis(500)))?;
+                stream.set_write_timeout(Some(Duration::from_millis(500)))?;
+                let mut response = String::new();
+                if stream
+                    .write_all(
+                        b"GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+                    )
+                    .is_ok()
+                    && stream.read_to_string(&mut response).is_ok()
+                    && response.starts_with("HTTP/1.1 200")
+                {
+                    return Ok::<(), io::Error>(());
                 }
             }
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
     })
     .await
@@ -298,17 +407,31 @@ async fn wait_for_running(handle: &ConnectorHandle) -> TestResult {
 }
 
 async fn wait_for_record_count(bootstrap: &str, expected: usize) -> TestResult {
+    wait_for_record_count_matching(bootstrap, expected, true).await
+}
+
+async fn wait_for_at_least_record_count(bootstrap: &str, expected: usize) -> TestResult {
+    wait_for_record_count_matching(bootstrap, expected, false).await
+}
+
+async fn wait_for_record_count_matching(
+    bootstrap: &str,
+    expected: usize,
+    exact: bool,
+) -> TestResult {
     timeout(WAIT, async {
         loop {
             if let Ok(records) =
                 krabka_replicator::admin_util::read_all(bootstrap, TOPIC, None).await
             {
                 let count = records.len();
-                assert!(
-                    count <= expected,
-                    "observed duplicate records: {count} > {expected}"
-                );
-                if count == expected {
+                if exact {
+                    assert!(
+                        count <= expected,
+                        "observed duplicate records: {count} > {expected}"
+                    );
+                }
+                if count >= expected {
                     return Ok::<(), io::Error>(());
                 }
             }
@@ -329,6 +452,7 @@ async fn read_records(
     bootstrap: &str,
     group_id: &str,
     expected: usize,
+    repeated_key: Option<&[u8]>,
 ) -> TestResult<Vec<ObservedRecord>> {
     let mut consumer = timeout(
         WAIT,
@@ -345,7 +469,15 @@ async fn read_records(
 
     let records = timeout(WAIT, async {
         let mut records = Vec::with_capacity(expected);
-        while records.len() < expected {
+        while records.len() < expected
+            || repeated_key.is_some_and(|key| {
+                records
+                    .iter()
+                    .filter(|record: &&ObservedRecord| record.key.as_deref() == Some(key))
+                    .count()
+                    < 2
+            })
+        {
             for record in consumer.poll(millis(250)).await? {
                 records.push(observe(record)?);
             }

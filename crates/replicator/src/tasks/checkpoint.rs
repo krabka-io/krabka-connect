@@ -315,6 +315,12 @@ impl CheckpointTask {
         let _ = self.shutdown.send(true);
         let _ = self.handle.await;
     }
+
+    /// Abort the task without writing another checkpoint.
+    pub async fn crash(self) {
+        self.handle.abort();
+        let _ = self.handle.await;
+    }
 }
 
 /// Build a non-idempotent producer with `acks=All` that targets the given

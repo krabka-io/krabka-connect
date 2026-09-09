@@ -20,6 +20,7 @@ crate_binary(
 )
 
 crate_tests(
+    data = [":krabka-connect-worker"],
     lib = "connect-worker",
     # postgres_cdc drives testcontainers: it starts Postgres and a Confluent
     # Schema Registry, and reaches the Docker daemon, which Bazel cannot
