@@ -119,7 +119,7 @@ jobs:
       - name: Run both registry backends
         run: |
           set -euo pipefail
-          bazel test //crates/connect-worker:postgres_cdc_test \
+          bazel test --cache_test_results=no //crates/connect-worker:postgres_cdc_test \
             --test_arg=--ignored \
             --test_arg=--exact \
             --test_arg=postgres_cdc_acceptance_matrix_survives_force_killed_worker \

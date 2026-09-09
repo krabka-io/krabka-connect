@@ -145,7 +145,7 @@ async fn run_acceptance_case(registry_flavor: RegistryFlavor) -> TestResult {
         .await?;
 
     wait_for_record_count(&bootstrap, 3).await?;
-    let first = read_records(&bootstrap, "orders-cdc-first", 3).await?;
+    let first = read_records(&bootstrap, "orders-cdc-first", 3, None).await?;
     let encoder = PostgresProtoEncoder::from_registry(&registry_url).await?;
     let key_one = encoded_key(&encoder, 1)?;
     assert!(first.len() == 3);
@@ -178,14 +178,15 @@ async fn run_acceptance_case(registry_flavor: RegistryFlavor) -> TestResult {
         .await?;
 
     wait_for_at_least_record_count(&bootstrap, 5).await?;
-    let final_records = read_records(&bootstrap, "orders-cdc-final", 5).await?;
+    let key_two = encoded_key(&encoder, 2)?;
+    let final_records =
+        read_records(&bootstrap, "orders-cdc-final", 5, Some(key_two.as_ref())).await?;
     let replayed = final_records.len().saturating_sub(5);
     assert!(
         replayed <= 3,
         "at-least-once replay exceeded one source batch"
     );
     assert!(final_records[..3] == first);
-    let key_two = encoded_key(&encoder, 2)?;
     let evolved = final_records
         .iter()
         .filter(|record| record.key.as_deref() == Some(key_two.as_ref()))
@@ -383,12 +384,17 @@ async fn wait_for_ready(address: SocketAddr) -> TestResult {
             if let Ok(mut stream) =
                 std::net::TcpStream::connect_timeout(&address, Duration::from_millis(100))
             {
-                stream.write_all(
-                    b"GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-                )?;
+                stream.set_read_timeout(Some(Duration::from_millis(500)))?;
+                stream.set_write_timeout(Some(Duration::from_millis(500)))?;
                 let mut response = String::new();
-                stream.read_to_string(&mut response)?;
-                if response.starts_with("HTTP/1.1 200") {
+                if stream
+                    .write_all(
+                        b"GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+                    )
+                    .is_ok()
+                    && stream.read_to_string(&mut response).is_ok()
+                    && response.starts_with("HTTP/1.1 200")
+                {
                     return Ok::<(), io::Error>(());
                 }
             }
@@ -446,6 +452,7 @@ async fn read_records(
     bootstrap: &str,
     group_id: &str,
     expected: usize,
+    repeated_key: Option<&[u8]>,
 ) -> TestResult<Vec<ObservedRecord>> {
     let mut consumer = timeout(
         WAIT,
@@ -462,7 +469,15 @@ async fn read_records(
 
     let records = timeout(WAIT, async {
         let mut records = Vec::with_capacity(expected);
-        while records.len() < expected {
+        while records.len() < expected
+            || repeated_key.is_some_and(|key| {
+                records
+                    .iter()
+                    .filter(|record: &&ObservedRecord| record.key.as_deref() == Some(key))
+                    .count()
+                    < 2
+            })
+        {
             for record in consumer.poll(millis(250)).await? {
                 records.push(observe(record)?);
             }
