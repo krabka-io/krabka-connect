@@ -184,7 +184,7 @@ jobs:
             bazel query 'kind("cargo_mutants_test rule", //crates/...)' |
               jq -R -s -c 'split("\n") | map(select(length > 0)) |
                 map({target: ., name: (. | split("/")[3] | split(":")[0])}) |
-                map(. + {minutes: (if (["promql","observability","traces"] | index(.name)) then 180 else 60 end)})'
+                map(.name as $name | . + {minutes: (if (["promql","observability","traces"] | index($name)) then 180 else 60 end)})'
           )"
           echo "crates=${crates}" >>"${GITHUB_OUTPUT}"
           echo "Selected: ${crates}"
