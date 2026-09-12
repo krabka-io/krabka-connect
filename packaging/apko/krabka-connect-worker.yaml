@@ -1,0 +1,50 @@
+# The Krabka Connect worker image.
+#
+# apko assembles an OCI image from APK packages. It does not compile anything.
+# The package list below is the whole image, so this file needs no base image.
+# `krabka-io/krabka-broker` keeps `packaging/base.apko.yaml` for its own Bazel
+# image build. That file builds one amd64 layer, and rules_apko reads it through
+# a lockfile label inside the broker module. This repository cannot reference it,
+# and this image also builds for aarch64. Keep the baseline packages here.
+#
+# DANGLING DEPENDENCY: `krabka-connect-worker`. No repository produces that APK
+# today. The old monorepo melange recipe compiled ten server binaries from one
+# workspace and carved them into subpackages. No repository holds that crate set
+# now. `krabka-io/tooling` keeps the recipe at `packaging/melange/krabka.yaml` as
+# a reference document. Nothing can run it.
+#
+# `apko build` therefore fails on this file until this repository grows its own
+# recipe at `packaging/melange/krabka-connect-worker.yaml`. Copy the toolchain
+# pin, the `/var/cache/melange` cache handling and the `dist/` staging step from
+# the tooling recipe. Cut the `-p` list, the `--bin` list and the install loop
+# down to `krabka-connect-worker`, which is the one binary this workspace builds.
+contents:
+  repositories:
+    - https://packages.wolfi.dev/os
+  keyring:
+    - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+  packages:
+    - ca-certificates-bundle
+    - tzdata
+    - wolfi-baselayout
+    - glibc
+    - ld-linux
+    - busybox
+    - krabka-connect-worker
+
+accounts:
+  groups:
+    - groupname: nonroot
+      gid: 65532
+  users:
+    - username: nonroot
+      uid: 65532
+      gid: 65532
+  run-as: 65532
+
+entrypoint:
+  command: /usr/bin/krabka-connect-worker
+
+archs:
+  - x86_64
+  - aarch64
