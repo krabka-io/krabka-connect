@@ -103,6 +103,77 @@ jobs:
           name: rustdoc
           path: bazel-bin/crates/**/*.rustdoc
           if-no-files-found: error
+  # Build the Connect worker image and run it in a container. The `ci` job runs
+  # //packaging:image_binaries_test, which checks the layer without a daemon.
+  # This job loads the image into the runner's Docker daemon and starts the
+  # worker under the glibc and the loader of the apko base.
+  image:
+    name: image
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aspect-build/setup-aspect@2306377a61c45954ab2df7c7311698b109364352 # v2026.26.9
+        with:
+          aspect-api-token: ${{ secrets.ASPECT_API_TOKEN }}
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-image
+          repository-cache: true
+      - name: build and run the image
+        run: bazel test -c opt --config=docker //packaging:image_docker_test
+  # Push the Connect worker image to ghcr.io, tagged with the commit SHA. A `v*`
+  # tag later promotes this image by digest. See release.yml. The digest goes
+  # into an artifact, so the release promotes the image that this run tested
+  # and does not rebuild it.
+  delivery:
+    name: delivery
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [ci, coverage]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/krabka-io/krabka-connect-worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aspect-build/setup-aspect@2306377a61c45954ab2df7c7311698b109364352 # v2026.26.9
+        with:
+          aspect-api-token: ${{ secrets.ASPECT_API_TOKEN }}
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-image
+          repository-cache: true
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: test the delivery image
+        run: bazel test -c opt --config=docker //packaging:image_docker_test
+      - name: push
+        run: bazel run -c opt //packaging:push -- --tag "${GITHUB_SHA}"
+      - name: record the delivery image digest
+        run: |
+          set -euo pipefail
+          bazel build -c opt //packaging:image_manifest_blob
+          manifest="$(bazel cquery -c opt //packaging:image_manifest_blob --output=files)"
+          expected="sha256:$(sha256sum "${manifest}" | cut -d ' ' -f 1)"
+          actual="$(docker buildx imagetools inspect "${IMAGE}:${GITHUB_SHA}" |
+            awk '$1 == "Digest:" { print $2; exit }')"
+          if [ "${actual}" != "${expected}" ]; then
+            echo "${IMAGE}:${GITHUB_SHA} is ${actual}, but the build produced ${expected}." >&2
+            exit 1
+          fi
+          echo "${expected}" >delivery-image.digest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: delivery-image
+          path: delivery-image.digest
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 90
   postgres-cdc:
     name: PostgreSQL CDC · registry matrix
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
