@@ -1,0 +1,32 @@
+# The Wolfi base of the Connect worker image.
+#
+# //packaging:image layers the Bazel-built worker binary on top of this base.
+# The base holds only what the binary needs at run time: the glibc it links
+# against, the CA bundle for TLS, and a non-root account. It has no shell.
+#
+# After you change this file, regenerate the lock file:
+#
+#     bazel run @rules_apko//apko -- lock packaging/base.apko.yaml
+contents:
+  keyring:
+    - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+  repositories:
+    - https://packages.wolfi.dev/os
+  packages:
+    - ca-certificates-bundle
+    - glibc
+    - wolfi-baselayout
+
+accounts:
+  groups:
+    - groupname: nonroot
+      gid: 65532
+  users:
+    - username: nonroot
+      uid: 65532
+      gid: 65532
+      shell: /sbin/nologin
+  run-as: nonroot
+
+archs:
+  - amd64

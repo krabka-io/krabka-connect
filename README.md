@@ -42,6 +42,22 @@ Both are supported and both are gated in CI. Cargo remains the dependency source
 of truth: Bazel reads the same `Cargo.toml` and `Cargo.lock` through
 `crate.from_cargo`, so there is no second dependency set to keep in sync.
 
+## Container image
+
+The worker image is `ghcr.io/krabka-io/krabka-connect-worker`. Bazel builds it
+in [`packaging`](packaging/BUILD.bazel): apko makes a locked Wolfi base, and
+`rules_img` adds the Bazel-built `krabka-connect-worker` binary. The image runs
+as the non-root user 65532 and has no shell.
+
+```bash
+bazel run -c opt //packaging:image_load
+docker run --rm ghcr.io/krabka-io/krabka-connect-worker:dev --help
+```
+
+Each push to `main` publishes the image with the commit SHA as its tag. A `v*`
+tag promotes that image to the version tag, and to `latest` when it is the
+newest release.
+
 ## Sibling revisions
 
 Sibling crates are declared against crates.io in the member manifests and pinned

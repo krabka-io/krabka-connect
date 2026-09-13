@@ -1,0 +1,144 @@
+"""The Connect worker container image.
+
+apko builds the locked Wolfi base. rules_img adds the Bazel-built worker binary
+and owns both local loading and registry delivery. This follows the image build
+in krabka-broker.
+
+    bazel run -c opt //packaging:image_load     # load into the local daemon
+    bazel run -c opt //packaging:push -- --tag dev
+
+The worker keeps no local state. It reads its configuration from flags and
+`KRABKA_*` environment variables, stores its checkpoints in Kafka, and binds
+its health listener on port 8080. The image therefore needs no data directory
+and no privilege.
+"""
+
+load("@rules_apko//apko:defs.bzl", "apko_image")
+load("@rules_img//img:convert.bzl", "image_manifest_from_oci_layout")
+load("@rules_img//img:image.bzl", "image_manifest")
+load("@rules_img//img:layer.bzl", "file_metadata", "image_layer")
+load("@rules_img//img:load.bzl", "image_load")
+load("@rules_img//img:media_types.bzl", "GZIP_LAYER")
+load("@rules_img//img:push.bzl", "image_push")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# The tag `image_load` gives the image in the local daemon. A push supplies its
+# own tags. See `push` below.
+IMAGE_TAG = "ghcr.io/krabka-io/krabka-connect-worker:dev"
+
+# The one architecture this image is built for. `base.apko.yaml` names it too,
+# and `image_binaries_test` holds the layer to it.
+IMAGE_ARCH = "amd64"
+
+# Owned by `nonroot` in the apko base.
+NONROOT = file_metadata(
+    gid = 65532,
+    mode = "0755",
+    uid = 65532,
+)
+
+apko_image(
+    name = "base_oci",
+    config = "base.apko.yaml",
+    contents = "@connect_worker_base_lock//:contents",
+    tag = "krabka-connect-worker-base:locked",
+)
+
+image_manifest_from_oci_layout(
+    name = "base",
+    src = ":base_oci",
+    architecture = IMAGE_ARCH,
+    layers = [GZIP_LAYER],
+    os = "linux",
+)
+
+image_layer(
+    name = "worker_layer",
+    srcs = {
+        "/usr/bin/krabka-connect-worker": "//crates/connect-worker:krabka-connect-worker",
+    },
+    default_metadata = NONROOT,
+    include_runfiles = False,
+)
+
+# The layer carries whatever the host toolchain built, with no platform
+# transition, and the manifest says linux/amd64. Off x86_64 Linux the target is
+# incompatible, so `bazel build //...` skips it together with `image_load`,
+# `push` and the image tests.
+image_manifest(
+    name = "image",
+    base = ":base",
+    entrypoint = ["/usr/bin/krabka-connect-worker"],
+    layers = [":worker_layer"],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    user = "65532:65532",
+)
+
+# `image` puts the manifest and the config in its default outputs. `root_blob`
+# is the manifest alone, which names the layer digests.
+filegroup(
+    name = "image_manifest_blob",
+    srcs = [":image"],
+    output_group = "root_blob",
+)
+
+# Checks the built layer and the manifest without a Docker daemon, so it runs in
+# `bazel test //...` on every commit.
+sh_test(
+    name = "image_binaries_test",
+    size = "small",
+    srcs = ["image_binaries_test.sh"],
+    args = [
+        IMAGE_ARCH,
+        "$(rootpath :image_manifest_blob)",
+        "$(rootpath :worker_layer)",
+    ],
+    data = [
+        ":image_manifest_blob",
+        ":worker_layer",
+    ],
+)
+
+image_load(
+    name = "image_load",
+    image = ":image",
+    tag = IMAGE_TAG,
+)
+
+# Loads the image and runs the worker in a container, under the base image's
+# own loader and glibc. It needs a Docker daemon, so it has the `docker` tag and
+# `bazel test //...` skips it:
+#
+#     bazel test -c opt --config=docker //packaging:image_docker_test
+sh_test(
+    name = "image_docker_test",
+    size = "medium",
+    srcs = ["image_docker_test.sh"],
+    args = [
+        "$(rootpath :image_load)",
+        IMAGE_TAG,
+    ],
+    data = [":image_load"],
+    # `no-sandbox` for the daemon socket. `external` so that Bazel never caches
+    # a pass against inputs that do not describe the state of the daemon.
+    tags = [
+        "docker",
+        "external",
+        "no-remote-exec",
+        "no-sandbox",
+    ],
+)
+
+# CI supplies the tags on the command line. A push to main pushes the commit
+# SHA, and a release tag promotes that image. See .github/workflows.
+image_push(
+    name = "push",
+    image = ":image",
+    registry = "ghcr.io",
+    repository = "krabka-io/krabka-connect-worker",
+)
