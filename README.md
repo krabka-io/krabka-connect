@@ -62,9 +62,7 @@ newest release.
 
 Sibling crates are declared against crates.io in the member manifests and pinned
 by revision in one `[patch.crates-io]` table in [`Cargo.toml`](Cargo.toml). That
-table is the only place a revision is bumped, and
-[`sync-siblings`](.github/workflows/sync-siblings.yml) proposes those bumps as
-pull requests.
+table is the only place a revision is bumped.
 
 Every crate each sibling publishes is listed there, not only the ones this
 repository names directly. Cargo ignores a dependency's own patch table, so a
