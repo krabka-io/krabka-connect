@@ -40,17 +40,146 @@ _LANDING_HEAD = [
 
 _LANDING_TAIL = ["</tbody>", "</table>", "</html>"]
 
-def manifest_field(lines, field):
-    """The value `field` is assigned on its first `field = "..."` line.
+# The single-character escapes of a TOML basic string.
+_SIMPLE_ESCAPES = {
+    '"': '"',
+    "\\": "\\",
+    "n": "\n",
+    "t": "\t",
+    "r": "\r",
+    "b": "\x08",
+    "f": "\x0c",
+}
 
-    The manifests here open with `[package]`, so the first assignment is the
-    package's own. A value holding a quote keeps it: the match runs to the line's last quote, so
-    the landing page carries such a description through verbatim.
+# The width in hex digits of `\uXXXX` and `\UXXXXXXXX`.
+_UNICODE_ESCAPE_WIDTH = {"u": 4, "U": 8}
+
+def html_escape(text):
+    """`text` with the five characters HTML treats specially made inert.
+
+    `&` goes first so the ampersands the other replacements add are not
+    escaped a second time.
     """
-    prefix = field + ' = "'
-    for line in lines:
-        if line.startswith(prefix) and line.endswith('"') and len(line) > len(prefix):
-            return line[len(prefix):-1]
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
+
+def _hex_value(digits):
+    """The number `digits` spells in hex, or -1 when a character is not a hex digit."""
+    value = 0
+    for digit in digits:
+        place = "0123456789abcdef".find(digit.lower())
+        if place < 0:
+            return -1
+        value = value * 16 + place
+    return value
+
+def _decode_basic(body):
+    """The text of a TOML basic string whose opening quote was already consumed.
+
+    The string ends at the first unescaped `"`, after which only a `#` comment
+    may follow. Returns None when the string is unterminated, has other text
+    after the closing quote, or holds an
+    escape TOML does not define (or a `\\u` escape that is not a Unicode scalar
+    value).
+    """
+    chars = [chr(code) for code in body.codepoints()]
+    out = []
+    skip = 0
+    for index in range(len(chars)):
+        if skip > 0:
+            skip -= 1
+            continue
+        char = chars[index]
+        if char == '"':
+            if not _only_a_comment_follows("".join(chars[index + 1:])):
+                return None
+            return "".join(out)
+        if char != "\\":
+            out.append(char)
+            continue
+        if index + 1 >= len(chars):
+            return None
+        kind = chars[index + 1]
+        if kind in _SIMPLE_ESCAPES:
+            out.append(_SIMPLE_ESCAPES[kind])
+            skip = 1
+        elif kind in _UNICODE_ESCAPE_WIDTH:
+            width = _UNICODE_ESCAPE_WIDTH[kind]
+            digits = chars[index + 2:index + 2 + width]
+            if len(digits) < width:
+                return None
+            code = _hex_value(digits)
+            if code < 0 or code > 0x10FFFF or (code >= 0xD800 and code <= 0xDFFF):
+                return None
+            out.append(chr(code))
+            skip = 1 + width
+        else:
+            return None
+    return None
+
+def _decode_literal(body):
+    """The text of a TOML literal string whose opening quote was already consumed.
+
+    A literal string has no escapes, so it ends at the first `'`. Returns None
+    when it is unterminated.
+    """
+    end = body.find("'")
+    if end < 0:
+        return None
+    return body[:end]
+
+def _only_a_comment_follows(rest):
+    """Whether `rest`, the text after a value's closing quote, is blank or a `#` comment."""
+    trimmed = rest.strip()
+    return not trimmed or trimmed.startswith("#")
+
+def _string_value(text):
+    """The decoded string `text` opens with, or None when it is not a well-formed one.
+
+    `text` starts at the opening quote. Anything after the closing quote must
+    be a `#` comment or nothing.
+    """
+    if text.startswith('"'):
+        return _decode_basic(text[1:])
+    if text.startswith("'"):
+        value = _decode_literal(text[1:])
+        if value == None or not _only_a_comment_follows(text[2 + len(value):]):
+            return None
+        return value
+    return None
+
+def _table_name(line):
+    """The name of the table a `[name]` header line opens, `[[name]]` included."""
+    end = line.find("]")
+    if end < 0:
+        return ""
+    return line[:end].lstrip("[").strip()
+
+def manifest_field(lines, field):
+    """The decoded value `field` is assigned inside the manifest's `[package]` table.
+
+    Only `[package]` is read: a key under `[dependencies]` or any other table,
+    and anything before the first header, is skipped. A key may be indented and
+    may have any whitespace (or none) around `=`. A TOML basic string (`"..."`)
+    is decoded: `\\"`, `\\\\`, `\\n`, `\\t`, `\\r`, `\\b`, `\\f`, `\\uXXXX` and
+    `\\UXXXXXXXX` become the characters they name. A literal string (`'...'`) has
+    no escapes and is returned as written. A trailing `# comment` after the
+    closing quote is ignored. The result is "" when the field is absent, is not
+    a string (`description.workspace = true`), or is malformed (an unclosed or
+    unescaped inner quote, an unknown escape, text after the closing quote).
+    """
+    in_package = False
+    for raw in lines:
+        line = raw.strip()
+        if line.startswith("["):
+            in_package = _table_name(line) == "package" and not line.startswith("[[")
+            continue
+        if not in_package or not line.startswith(field):
+            continue
+        rest = line[len(field):].lstrip()
+        if not rest.startswith("="):
+            continue
+        value = _string_value(rest[1:].lstrip())
+        return value if value != None else ""
     return ""
 
 def snake(name):
@@ -79,18 +208,18 @@ def redirect_page(name, module):
     return "\n".join([
         "<!doctype html>",
         '<meta charset="utf-8">',
-        '<meta http-equiv="refresh" content="0; url=%s/index.html">' % module,
-        "<title>%s</title>" % name,
-        '<a href="%s/index.html">%s</a>' % (module, name),
+        '<meta http-equiv="refresh" content="0; url=%s/index.html">' % html_escape(module),
+        "<title>%s</title>" % html_escape(name),
+        '<a href="%s/index.html">%s</a>' % (html_escape(module), html_escape(name)),
     ]) + "\n"
 
 def landing_row(row):
     """The landing page's table row for one `struct(name, snake, description)`."""
     return '<tr><td><a href="%s/%s/index.html"><code>%s</code></a></td><td>%s</td></tr>' % (
-        row.name,
-        row.snake,
-        row.name,
-        row.description,
+        html_escape(row.name),
+        html_escape(row.snake),
+        html_escape(row.name),
+        html_escape(row.description),
     )
 
 def landing_page(rows):
@@ -123,6 +252,43 @@ def resolve_output(root, output):
     if output.startswith("/"):
         return output
     return root + "/" + output
+
+# Top-level entries of the checkout that `--output` must never name, because
+# the output directory is deleted before it is rebuilt. `bazel-*` covers the
+# convenience symlinks into Bazel's output base.
+_PROTECTED_TOP_LEVEL = ["crates", ".git", ".github", ".aspect", "bazel", "docs"]
+
+def normalize_path(path):
+    """`path` (absolute) with `.` and `..` segments and duplicate slashes collapsed.
+
+    A `..` at the root stays at the root, as the kernel treats it.
+    """
+    stack = []
+    for segment in path.split("/"):
+        if segment == "" or segment == ".":
+            continue
+        if segment == "..":
+            if stack:
+                stack.pop()
+            continue
+        stack.append(segment)
+    return "/" + "/".join(stack)
+
+def output_problem(root, out):
+    """Why `out` is not a safe directory to delete and rebuild, or "" when it is.
+
+    Both paths are normalized first. `out` must be a strict descendant of
+    `root`, and not a top-level entry the checkout is made of.
+    """
+    base = normalize_path(root)
+    target = normalize_path(out)
+    prefix = base if base == "/" else base + "/"
+    if target == "/" or target == base or not target.startswith(prefix):
+        return "refusing --output %s: it must be a directory inside %s" % (out, base)
+    top = target[len(prefix):].split("/")[0]
+    if top in _PROTECTED_TOP_LEVEL or top.startswith("bazel-"):
+        return "refusing --output %s: %s is part of the checkout" % (out, top)
+    return ""
 
 def copy_tree(fs, source, destination):
     """Copy the tree at `source` to `destination` writable, and count the files.
@@ -195,6 +361,10 @@ def _impl(ctx: TaskContext) -> int:
         ctx.std.io.stderr.write("no output directory: pass --output\n")
         return 2
     out = resolve_output(root, ctx.args.output)
+    unsafe = output_problem(root, out)
+    if unsafe:
+        ctx.std.io.stderr.write(unsafe + "\n")
+        return 2
 
     crates = _crates(fs, root)
     if not crates:
