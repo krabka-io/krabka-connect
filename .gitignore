@@ -62,3 +62,4 @@ mutants.out.old
 
 # Python bytecode from local runs of scripts/tests
 __pycache__/
+/site/
