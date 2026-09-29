@@ -130,6 +130,13 @@ def crate_proc_macro(name, srcs = None, **kwargs):
         **kwargs
     )
 
+    # The same `<name>_doc` as `crate_library` emits, so the docs site query
+    # `kind("rust_doc rule", //crates/...)` finds the proc-macro crate too.
+    rust_doc(
+        name = name + "_doc",
+        crate = ":" + name,
+    )
+
 def crate_binary(name, crate_root, lib, tests = True, **kwargs):
     """`rust_binary` for a `[[bin]]` target that links its own crate's library.
 
