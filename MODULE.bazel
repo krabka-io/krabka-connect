@@ -105,7 +105,7 @@ toolchains.toolchain(
     rustfmt_version = "nightly/2026-08-14",
     # Matches rust-toolchain.toml. Letting these drift is precisely the split
     # that "one dependency source of truth" exists to avoid.
-    version = "1.97.1",
+    version = "1.98.1",
 )
 use_repo(toolchains, "krabka_rust_toolchains")
 

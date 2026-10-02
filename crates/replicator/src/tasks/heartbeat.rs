@@ -144,10 +144,9 @@ impl HeartbeatTask {
                             })
                             .await;
 
-                        match rx.await {
-                            Ok(Ok(_)) => {}
-                            Ok(Err(e)) => warn!("heartbeat produce error: {e}"),
-                            Err(_) => warn!("heartbeat: sender dropped (ack channel closed)"),
+                        match rx {
+                            Ok(_) => {}
+                            Err(e) => warn!("heartbeat produce error: {e}"),
                         }
 
                         if let Err(e) = producer.flush().await {

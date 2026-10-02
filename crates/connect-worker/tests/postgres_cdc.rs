@@ -109,7 +109,7 @@ async fn postgres_cdc_acceptance_matrix_survives_force_killed_worker() -> TestRe
         .try_init();
 
     for registry in [RegistryFlavor::Krabka, RegistryFlavor::Confluent] {
-        run_acceptance_case(registry).await?;
+        Box::pin(run_acceptance_case(registry)).await?;
     }
     Ok(())
 }

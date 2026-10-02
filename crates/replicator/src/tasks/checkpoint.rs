@@ -5,7 +5,7 @@
 //! [`Checkpoint`] records to `<source>.checkpoints.internal` on the TARGET cluster.
 
 use bytes::Bytes;
-use krabka_client_admin::AdminClient;
+use krabka_client_admin::{AdminClient, groups::ListGroupsOptions};
 use krabka_client_producer::{Acks, Producer, ProducerRecord};
 use krabka_units::{
     fmt::Human as _,
@@ -108,12 +108,14 @@ async fn run_once_with_runtime_policy(
                 runtime_policy.client_dns_timeout,
             )
             .map_err(ReplicatorError::Client)?,
-            connect_timeout: runtime_policy.client_connect_timeout,
+            socket_connection_setup_timeout: runtime_policy.client_connect_timeout,
+            socket_connection_setup_timeout_max: runtime_policy.client_connect_timeout,
             request_timeout: runtime_policy.client_request_timeout,
             client_id: "krabka-operator".to_owned(),
             dispatch_queue_capacity: client_resource_policy.dispatch_queue_capacity,
             frame_max: client_resource_policy.frame_max,
             security: None, // source cluster: target security does not apply
+            ..Default::default()
         },
     )
     .await
@@ -121,12 +123,15 @@ async fn run_once_with_runtime_policy(
 
     // 3. List and filter consumer groups; skip our own internal groups.
     let all_groups = admin
-        .list_groups()
+        .list_groups(&ListGroupsOptions::default())
         .await
-        .map_err(|e| ReplicatorError::Client(format!("list_groups: {e}")))?;
+        .map_err(|e| ReplicatorError::Client(format!("list_groups: {e}")))?
+        .all()
+        .map_err(|error| ReplicatorError::Client(format!("list_groups: {error:?}")))?;
 
     let groups: Vec<String> = all_groups
         .into_iter()
+        .map(|group| group.group_id)
         .filter(|g| !g.starts_with("krabka-replicator-"))
         .filter(|g| params.group_selector.matches(g))
         .collect();
@@ -177,7 +182,7 @@ async fn run_once_with_runtime_policy(
             };
 
             let _rx = producer
-                .send(ProducerRecord {
+                .enqueue(ProducerRecord {
                     topic: checkpoint_topic.clone(),
                     partition: None,
                     key: Some(Bytes::from(checkpoint.key_bytes())),
@@ -185,7 +190,8 @@ async fn run_once_with_runtime_policy(
                     headers: Vec::new(),
                     timestamp_ms: None,
                 })
-                .await;
+                .await
+                .map_err(|error| ReplicatorError::Client(format!("checkpoint produce: {error}")))?;
         }
     }
 

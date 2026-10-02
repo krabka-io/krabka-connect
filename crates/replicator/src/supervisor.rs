@@ -165,12 +165,14 @@ impl FlowSupervisor {
                         runtime_policy.client_dns_timeout,
                     )
                     .map_err(ReplicatorError::Client)?,
-                    connect_timeout: runtime_policy.client_connect_timeout,
+                    socket_connection_setup_timeout: runtime_policy.client_connect_timeout,
+                    socket_connection_setup_timeout_max: runtime_policy.client_connect_timeout,
                     request_timeout: runtime_policy.client_request_timeout,
                     client_id: "krabka-operator".to_owned(),
                     dispatch_queue_capacity: client_resource_policy.dispatch_queue_capacity,
                     frame_max: client_resource_policy.frame_max,
                     security: None,
+                    ..Default::default()
                 },
             )
             .await

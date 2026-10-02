@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use bytes::Bytes;
-use krabka_client_admin::{AdminClient, CreateTopicSpec};
+use krabka_client_admin::{AdminClient, CreateTopicSpec, TopicMutationOptions};
 use krabka_client_consumer::{AutoOffsetReset, Consumer, IsolationLevel};
 use krabka_client_core::security::ClientSecurity;
 
@@ -119,8 +119,9 @@ pub(crate) async fn ensure_topic_with_runtime_policy(
                 partitions,
                 replicas: i32::from(replication_factor.get()),
                 configs: BTreeMap::new(),
+                ..Default::default()
             }],
-            runtime_policy.topic_create_timeout,
+            TopicMutationOptions::with_timeout(runtime_policy.topic_create_timeout),
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -229,8 +230,9 @@ pub(crate) async fn ensure_compacted_topic_with_runtime_policy(
                 partitions: 1,
                 replicas: i32::from(runtime_policy.internal_topic_replication_factor.get()),
                 configs,
+                ..Default::default()
             }],
-            runtime_policy.topic_create_timeout,
+            TopicMutationOptions::with_timeout(runtime_policy.topic_create_timeout),
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -256,12 +258,14 @@ fn admin_options(
 ) -> Result<krabka_client_core::ConnectionOptions, String> {
     Ok(krabka_client_core::ConnectionOptions {
         dns_timeout: krabka_client_core::ClientDnsTimeout::new(runtime_policy.client_dns_timeout)?,
-        connect_timeout: runtime_policy.client_connect_timeout,
+        socket_connection_setup_timeout: runtime_policy.client_connect_timeout,
+        socket_connection_setup_timeout_max: runtime_policy.client_connect_timeout,
         request_timeout: runtime_policy.client_request_timeout,
         client_id: "krabka-operator".to_owned(),
         dispatch_queue_capacity: policy.dispatch_queue_capacity,
         frame_max: policy.frame_max,
         security: security.map(Box::new),
+        ..Default::default()
     })
 }
 
@@ -284,6 +288,8 @@ async fn build_drain_consumer(
             .frame_max(client_resource_policy.frame_max.size())
             .subscribe(vec![topic.to_string()])
             .auto_offset_reset(AutoOffsetReset::Earliest)
+            .enable_auto_commit(false)
+            .allow_auto_create_topics(false)
             .isolation_level(IsolationLevel::ReadCommitted)
             .security(sec)
             .build()
@@ -297,6 +303,8 @@ async fn build_drain_consumer(
             .frame_max(client_resource_policy.frame_max.size())
             .subscribe(vec![topic.to_string()])
             .auto_offset_reset(AutoOffsetReset::Earliest)
+            .enable_auto_commit(false)
+            .allow_auto_create_topics(false)
             .isolation_level(IsolationLevel::ReadCommitted)
             .build()
             .await
@@ -527,6 +535,30 @@ mod tests {
         ] {
             assert2::assert!(super::is_unknown_topic_error(msg) == want);
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn reading_a_missing_topic_preserves_explicit_partition_creation() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let broker = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
+            dir.path().to_path_buf(),
+        ))
+        .await
+        .unwrap();
+        let bootstrap = broker.listen_addr().to_string();
+        let topic = "explicit-three-partitions";
+
+        let records = super::read_all(&bootstrap, topic, None).await.unwrap();
+        assert2::assert!(records.is_empty());
+
+        super::ensure_topic(&bootstrap, topic, 3, None)
+            .await
+            .unwrap();
+        let mut admin = krabka_client_admin::AdminClient::connect(&[bootstrap])
+            .await
+            .unwrap();
+        let metadata = admin.metadata(&[topic]).await.unwrap();
+        assert2::assert!(metadata.topics[0].partition_count == 3);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

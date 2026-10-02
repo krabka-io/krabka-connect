@@ -41,7 +41,7 @@ jobs:
       # `--severity` defaults to `auto`, which the CLI resolves to `fail` on CI
       # and `info` off it -- so this gates here and only reports locally.
       - name: format
-        run: aspect format
+        run: aspect format --bazel-flag=--remote_cache= --bazel-flag=--bes_backend=
       # `aspect lint` narrows to the targets a change touched and annotates the
       # pull request. It reads the `rules_lint_machine` output group, which is
       # why the clippy aspect comes from aspect_rules_lint_rust rather than from
@@ -50,13 +50,13 @@ jobs:
       # CLI. The aspect is named here rather than left to the `build:lint`
       # bazelrc config, which `aspect lint` does not read.
       - name: lint
-        run: aspect lint --aspect=//tools/lint:linters.bzl%clippy
+        run: aspect lint --bazel-flag=--remote_cache= --bazel-flag=--bes_backend= --aspect=//tools/lint:linters.bzl%clippy
       - name: build
-        run: aspect build //...
+        run: aspect build --bazel-flag=--remote_cache= --bazel-flag=--bes_backend= //...
       - name: compile PostgreSQL CDC acceptance
         run: bazel build //crates/connect-worker:postgres_cdc_test
       - name: test
-        run: aspect test //...
+        run: aspect test --bazel-flag=--remote_cache= --bazel-flag=--bes_backend= //...
   # LCOV over the first-party crates. Separate from `ci` because instrumented
   # binaries are a different build, so sharing that job's cache would only
   # evict it.
