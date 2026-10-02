@@ -288,6 +288,7 @@ async fn build_drain_consumer(
             .frame_max(client_resource_policy.frame_max.size())
             .subscribe(vec![topic.to_string()])
             .auto_offset_reset(AutoOffsetReset::Earliest)
+            .enable_auto_commit(false)
             .isolation_level(IsolationLevel::ReadCommitted)
             .security(sec)
             .build()
@@ -301,6 +302,7 @@ async fn build_drain_consumer(
             .frame_max(client_resource_policy.frame_max.size())
             .subscribe(vec![topic.to_string()])
             .auto_offset_reset(AutoOffsetReset::Earliest)
+            .enable_auto_commit(false)
             .isolation_level(IsolationLevel::ReadCommitted)
             .build()
             .await
