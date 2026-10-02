@@ -4900,7 +4900,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22505a5c94da8e3b7c2996394d1c933236c4d743e81a410bcca4e6989fc066a4"
 dependencies = [
  "bytes",
- "heck 0.5.0",
+ "heck 0.4.1",
  "itertools 0.12.1",
  "log",
  "multimap",
@@ -6257,7 +6257,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -7650,7 +7650,7 @@ dependencies = [
 [[patch.unused]]
 name = "krabka-client-streams"
 version = "0.4.0"
-source = "git+https://github.com/krabka-io/krabka-streams-rs?rev=c6a1243d4fe51e594d9f0becbd7b1c46f475841c#c6a1243d4fe51e594d9f0becbd7b1c46f475841c"
+source = "git+https://github.com/krabka-io/krabka-streams-rs?rev=10dea5cc9d68823353540347f7010d20bdc7351f#10dea5cc9d68823353540347f7010d20bdc7351f"
 
 [[patch.unused]]
 name = "krabka-kafka-tap"
