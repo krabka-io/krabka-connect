@@ -121,6 +121,7 @@ impl SourceConsumer {
             .frame_max(client_resource_policy.frame_max.size())
             .request_timeout(runtime_policy.client_request_timeout)
             .group_id(group_id)
+            .enable_auto_commit(false)
             .subscribe(topics.to_vec())
             .isolation_level(match delivery {
                 Delivery::AtLeastOnce => IsolationLevel::ReadUncommitted,
@@ -348,6 +349,16 @@ mod tests {
         // 1 (not 0 from `*1` or -1 from `-1`).
         let off = src.checkpoint().unwrap();
         assert2::assert!(off.position.get("orders-0") == Some(&OffsetValue::Long(1)));
+
+        src.close().await.unwrap();
+        let mut admin = krabka_client_admin::AdminClient::connect(&[bootstrap])
+            .await
+            .unwrap();
+        let offsets = admin
+            .list_consumer_group_offsets("krabka-replicator-flow1")
+            .await
+            .unwrap();
+        assert2::assert!(offsets == BTreeMap::new());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

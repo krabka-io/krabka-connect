@@ -289,6 +289,7 @@ async fn build_drain_consumer(
             .subscribe(vec![topic.to_string()])
             .auto_offset_reset(AutoOffsetReset::Earliest)
             .enable_auto_commit(false)
+            .allow_auto_create_topics(false)
             .isolation_level(IsolationLevel::ReadCommitted)
             .security(sec)
             .build()
@@ -303,6 +304,7 @@ async fn build_drain_consumer(
             .subscribe(vec![topic.to_string()])
             .auto_offset_reset(AutoOffsetReset::Earliest)
             .enable_auto_commit(false)
+            .allow_auto_create_topics(false)
             .isolation_level(IsolationLevel::ReadCommitted)
             .build()
             .await
@@ -533,6 +535,30 @@ mod tests {
         ] {
             assert2::assert!(super::is_unknown_topic_error(msg) == want);
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn reading_a_missing_topic_preserves_explicit_partition_creation() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let broker = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
+            dir.path().to_path_buf(),
+        ))
+        .await
+        .unwrap();
+        let bootstrap = broker.listen_addr().to_string();
+        let topic = "explicit-three-partitions";
+
+        let records = super::read_all(&bootstrap, topic, None).await.unwrap();
+        assert2::assert!(records.is_empty());
+
+        super::ensure_topic(&bootstrap, topic, 3, None)
+            .await
+            .unwrap();
+        let mut admin = krabka_client_admin::AdminClient::connect(&[bootstrap])
+            .await
+            .unwrap();
+        let metadata = admin.metadata(&[topic]).await.unwrap();
+        assert2::assert!(metadata.topics[0].partition_count == 3);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
