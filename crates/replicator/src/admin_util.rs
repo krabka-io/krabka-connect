@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use bytes::Bytes;
-use krabka_client_admin::{AdminClient, CreateTopicSpec};
+use krabka_client_admin::{AdminClient, CreateTopicSpec, TopicMutationOptions};
 use krabka_client_consumer::{AutoOffsetReset, Consumer, IsolationLevel};
 use krabka_client_core::security::ClientSecurity;
 
@@ -119,8 +119,9 @@ pub(crate) async fn ensure_topic_with_runtime_policy(
                 partitions,
                 replicas: i32::from(replication_factor.get()),
                 configs: BTreeMap::new(),
+                ..Default::default()
             }],
-            runtime_policy.topic_create_timeout,
+            TopicMutationOptions::with_timeout(runtime_policy.topic_create_timeout),
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -229,8 +230,9 @@ pub(crate) async fn ensure_compacted_topic_with_runtime_policy(
                 partitions: 1,
                 replicas: i32::from(runtime_policy.internal_topic_replication_factor.get()),
                 configs,
+                ..Default::default()
             }],
-            runtime_policy.topic_create_timeout,
+            TopicMutationOptions::with_timeout(runtime_policy.topic_create_timeout),
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -256,12 +258,14 @@ fn admin_options(
 ) -> Result<krabka_client_core::ConnectionOptions, String> {
     Ok(krabka_client_core::ConnectionOptions {
         dns_timeout: krabka_client_core::ClientDnsTimeout::new(runtime_policy.client_dns_timeout)?,
-        connect_timeout: runtime_policy.client_connect_timeout,
+        socket_connection_setup_timeout: runtime_policy.client_connect_timeout,
+        socket_connection_setup_timeout_max: runtime_policy.client_connect_timeout,
         request_timeout: runtime_policy.client_request_timeout,
         client_id: "krabka-operator".to_owned(),
         dispatch_queue_capacity: policy.dispatch_queue_capacity,
         frame_max: policy.frame_max,
         security: security.map(Box::new),
+        ..Default::default()
     })
 }
 

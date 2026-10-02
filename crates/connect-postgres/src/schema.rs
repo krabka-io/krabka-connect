@@ -75,6 +75,7 @@ impl PostgresProtoEncoder {
                 KEY_SUBJECT,
                 SchemaKind::Protobuf,
                 PROTO_SCHEMA,
+                &[],
                 Some(KEY_MESSAGE_TYPE),
             )
             .await
@@ -84,6 +85,7 @@ impl PostgresProtoEncoder {
                 VALUE_SUBJECT,
                 SchemaKind::Protobuf,
                 PROTO_SCHEMA,
+                &[],
                 Some(VALUE_MESSAGE_TYPE),
             )
             .await

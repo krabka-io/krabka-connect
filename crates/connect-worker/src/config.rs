@@ -5,7 +5,7 @@ use std::{fmt::Write as _, net::SocketAddr, path::PathBuf, str::FromStr, time::D
 use clap::Parser;
 use krabka_client_core::{
     ClientFrameMax, ConnectionDispatchQueueCapacity,
-    security::{ClientSecurity, SaslCredentials, TlsConnectorConfig},
+    security::{ClientSecurity, KeyStore, SaslCredentials, TlsConnectorConfig, TrustStore},
 };
 use krabka_connect::SecretString;
 use krabka_connect_postgres::PostgresSourceConfig;
@@ -290,17 +290,26 @@ impl WorkerConfig {
             return Ok(None);
         }
         let tls = if protocol.requires_tls() {
-            Some(TlsConnectorConfig {
-                trust_roots_pem: self.broker_ca_path.clone(),
-                server_name: self
-                    .broker_server_name
+            let mut tls = TlsConnectorConfig::default();
+            tls.trust_store = TrustStore::PemFile(
+                self.broker_ca_path
                     .clone()
-                    .ok_or_else(|| "TLS server name missing after validation".to_owned())?,
-                client_identity: self
-                    .broker_cert_path
-                    .clone()
-                    .zip(self.broker_key_path.clone()),
-            })
+                    .ok_or_else(|| "TLS CA path missing after validation".to_owned())?,
+            );
+            tls.server_name = self
+                .broker_server_name
+                .clone()
+                .ok_or_else(|| "TLS server name missing after validation".to_owned())?;
+            tls.key_store = self
+                .broker_cert_path
+                .clone()
+                .zip(self.broker_key_path.clone())
+                .map(|(certificate_chain, private_key)| KeyStore::PemFiles {
+                    certificate_chain,
+                    private_key,
+                    key_password: None,
+                });
+            Some(tls)
         } else {
             None
         };
@@ -325,11 +334,13 @@ impl WorkerConfig {
                         mechanism: SaslMechanism::ScramSha256,
                         username,
                         password,
+                        delegation_token: false,
                     },
                     BrokerSaslMechanism::ScramSha512 => SaslCredentials::Scram {
                         mechanism: SaslMechanism::ScramSha512,
                         username,
                         password,
+                        delegation_token: false,
                     },
                 },
             )
@@ -369,7 +380,6 @@ fn parse_positive_usize(value: &str) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use assert2::assert;
-    use clap::Parser as _;
 
     use super::*;
 
@@ -417,9 +427,15 @@ mod tests {
             security.sasl,
             Some(SaslCredentials::Scram {
                 mechanism: SaslMechanism::ScramSha512,
+                delegation_token: false,
                 ..
             })
         ));
+        let tls = security.tls.expect("TLS config");
+        assert!(tls.trust_store == TrustStore::PemFile(PathBuf::from("ca.pem")));
+        assert!(tls.server_name == "broker.example");
+        assert!(tls.hostname_verification);
+        assert!(tls.key_store.is_none());
 
         let mut partial = base_args();
         partial.extend([
@@ -428,8 +444,23 @@ mod tests {
             "--broker-server-name=broker.example",
             "--broker-cert-path=client.pem",
         ]);
-        let config = WorkerConfig::try_parse_from(partial).expect("CLI shape parses");
+        let mut config = WorkerConfig::try_parse_from(partial).expect("CLI shape parses");
         assert!(config.validate().is_err());
+        config.broker_key_path = Some(PathBuf::from("client.key"));
+        let tls = config
+            .client_security()
+            .expect("complete mTLS config")
+            .expect("secure protocol")
+            .tls
+            .expect("TLS config");
+        assert!(
+            tls.key_store
+                == Some(KeyStore::PemFiles {
+                    certificate_chain: PathBuf::from("client.pem"),
+                    private_key: PathBuf::from("client.key"),
+                    key_password: None,
+                })
+        );
     }
 
     #[test]

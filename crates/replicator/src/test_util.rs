@@ -27,7 +27,7 @@ pub async fn produce(bootstrap: &str, topic: &str, key: &[u8], value: &[u8]) {
         .await
         .unwrap_or_else(|e| panic!("produce: build producer: {e}"));
 
-    let rx = producer
+    producer
         .send(ProducerRecord {
             topic: topic.to_string(),
             partition: None,
@@ -36,10 +36,7 @@ pub async fn produce(bootstrap: &str, topic: &str, key: &[u8], value: &[u8]) {
             headers: Vec::new(),
             timestamp_ms: None,
         })
-        .await;
-
-    rx.await
-        .expect("produce: sender dropped")
+        .await
         .unwrap_or_else(|e| panic!("produce({topic}): {e}"));
 
     producer

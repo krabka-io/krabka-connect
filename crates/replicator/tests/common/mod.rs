@@ -62,8 +62,6 @@ pub async fn produce(bootstrap: &str, topic: &str, key: &[u8], value: &[u8]) {
             timestamp_ms: None,
         })
         .await
-        .await
-        .expect("ack recv")
         .expect("produce");
     producer.flush().await.expect("flush");
     producer.close().await.expect("close");

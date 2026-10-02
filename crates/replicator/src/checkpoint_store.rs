@@ -153,8 +153,6 @@ impl CheckpointStore for InternalTopicCheckpointStore {
                 timestamp_ms: None,
             })
             .await
-            .await
-            .map_err(|e| ConnectError::Offset(e.to_string()))?
             .map_err(|e| ConnectError::Offset(e.to_string()))?;
 
         self.producer

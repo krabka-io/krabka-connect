@@ -5,11 +5,10 @@ use std::collections::HashSet;
 use async_trait::async_trait;
 use bytes::Bytes;
 use krabka_client_core::security::ClientSecurity;
-use krabka_client_producer::{Acks, Header, Producer, ProducerRecord};
+use krabka_client_producer::{Acks, DeliveryHandle, Header, Producer, ProducerRecord};
 use krabka_connect::{CheckpointStore, ConnectError, ConnectRecord, Sink, SourceOffset};
 use krabka_replicator::config::ReplicationFactor;
 use krabka_units::{ByteSize, convert::ByteSizeExt as _};
-use tokio::sync::oneshot::Receiver;
 
 use crate::metrics::WorkerMetrics;
 
@@ -49,11 +48,7 @@ pub struct KafkaSink {
     client: KafkaClientConfig,
     topic_prefix: String,
     ensured_topics: HashSet<String>,
-    pending: Vec<
-        Receiver<
-            Result<krabka_client_producer::RecordMetadata, krabka_client_producer::ProducerError>,
-        >,
-    >,
+    pending: Vec<DeliveryHandle>,
     metrics: WorkerMetrics,
 }
 
@@ -110,7 +105,12 @@ impl Sink<Bytes, Bytes> for KafkaSink {
                 .await
                 .map_err(ConnectError::Backend)?;
             }
-            self.pending.push(self.producer.send(output).await);
+            self.pending.push(
+                self.producer
+                    .enqueue(output)
+                    .await
+                    .map_err(|error| ConnectError::Backend(error.to_string()))?,
+            );
         }
         Ok(())
     }
@@ -119,14 +119,9 @@ impl Sink<Bytes, Bytes> for KafkaSink {
         let mut first_error = None;
         for acknowledgement in std::mem::take(&mut self.pending) {
             match acknowledgement.await {
-                Ok(Ok(_)) => self.metrics.record_produced(),
-                Ok(Err(error)) => {
+                Ok(_) => self.metrics.record_produced(),
+                Err(error) => {
                     first_error.get_or_insert_with(|| error.to_string());
-                }
-                Err(_) => {
-                    first_error.get_or_insert_with(|| {
-                        "producer dropped acknowledgement sender".to_owned()
-                    });
                 }
             }
         }
@@ -242,8 +237,7 @@ impl CheckpointStore for KafkaCheckpointStore {
     async fn save(&self, offset: &SourceOffset) -> Result<(), ConnectError> {
         let value =
             serde_json::to_vec(offset).map_err(|error| ConnectError::Offset(error.to_string()))?;
-        let acknowledgement = self
-            .producer
+        self.producer
             .send(ProducerRecord {
                 topic: CHECKPOINT_TOPIC.to_owned(),
                 partition: Some(0),
@@ -252,14 +246,7 @@ impl CheckpointStore for KafkaCheckpointStore {
                 headers: Vec::new(),
                 timestamp_ms: None,
             })
-            .await;
-        acknowledgement
             .await
-            .map_err(|_| {
-                ConnectError::Offset(
-                    "checkpoint producer dropped acknowledgement sender".to_owned(),
-                )
-            })?
             .map_err(|error| ConnectError::Offset(error.to_string()))?;
         self.producer
             .flush()

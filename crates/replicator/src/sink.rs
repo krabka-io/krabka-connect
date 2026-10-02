@@ -9,11 +9,10 @@ use std::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use krabka_client_producer::{
-    Acks, Header, OwnedTransaction, Producer, ProducerError, ProducerRecord, RecordMetadata,
+    Acks, DeliveryHandle, Header, OwnedTransaction, Producer, ProducerRecord,
 };
 use krabka_connect::{ConnectError, ConnectRecord, OffsetValue, Sink, SourceOffset};
 use krabka_units::prelude::TimeExt as _;
-use tokio::sync::oneshot::Receiver;
 use tracing::warn;
 
 use crate::{
@@ -26,12 +25,12 @@ use crate::{
     residency::ResidencyGate,
 };
 
-/// One in-flight produce awaiting its broker ack: the ack receiver plus the
+/// One in-flight produce awaiting its broker ack: the delivery handle plus the
 /// source-side coordinates needed to build the [`OffsetSync`] once the ack
 /// supplies the downstream offset.
 struct PendingProduce {
-    /// Receiver for the broker ack carrying the downstream [`RecordMetadata`].
-    rx: Receiver<Result<RecordMetadata, ProducerError>>,
+    /// Handle for the broker ack carrying downstream record metadata.
+    rx: DeliveryHandle,
     /// Source topic name.
     topic: String,
     /// Source partition index.
@@ -266,7 +265,6 @@ impl TargetSink {
         {
             let meta = rx
                 .await
-                .map_err(|_| ConnectError::Backend("producer dropped sender".into()))?
                 .map_err(|error| ConnectError::Backend(error.to_string()))?;
             let offset_sync = OffsetSync {
                 topic,
@@ -274,8 +272,7 @@ impl TargetSink {
                 upstream,
                 downstream: DownstreamOffset(meta.offset),
             };
-            let sync_rx = self
-                .producer
+            self.producer
                 .send(ProducerRecord {
                     topic: self.offset_syncs_topic.clone(),
                     partition: None,
@@ -284,10 +281,7 @@ impl TargetSink {
                     headers: Vec::new(),
                     timestamp_ms: None,
                 })
-                .await;
-            sync_rx
                 .await
-                .map_err(|_| ConnectError::Backend("producer dropped offset-sync sender".into()))?
                 .map_err(|error| ConnectError::Backend(error.to_string()))?;
             completed.push(offset_sync);
         }
@@ -315,8 +309,6 @@ impl TargetSink {
                 timestamp_ms: None,
             })
             .await
-            .await
-            .map_err(|_| ConnectError::Offset("producer dropped checkpoint sender".into()))?
             .map_err(|error| ConnectError::Offset(error.to_string()))?;
         Ok(())
     }
@@ -468,7 +460,7 @@ impl Sink<(), ReplicatedRecord> for TargetSink {
             // Enqueue the produce and pair with an in-flight OffsetSync.
             let rx = self
                 .producer
-                .send(ProducerRecord {
+                .enqueue(ProducerRecord {
                     topic: target_topic,
                     partition: Some(r.partition.0),
                     key: r.key.clone(),
@@ -476,7 +468,8 @@ impl Sink<(), ReplicatedRecord> for TargetSink {
                     headers,
                     timestamp_ms: Some(r.timestamp.into()),
                 })
-                .await;
+                .await
+                .map_err(|error| ConnectError::Backend(error.to_string()))?;
 
             self.pending.push(PendingProduce {
                 rx,
