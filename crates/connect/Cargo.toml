@@ -1,5 +1,6 @@
 [package]
 name = "krabka-connect"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -26,7 +27,7 @@ assert2 = { workspace = true }
 # format-agnostic `SchemaSerializer`/`SchemaDeserializer` traits are needed
 # here, so no format feature (avro/protobuf/json) is enabled.
 krabka-schema-serde = { workspace = true }
-krabka-connect-derive = { version = "0.4.0", path = "../connect-derive", optional = true }
+krabka-connect-derive = { version = "0.4.1", path = "../connect-derive", optional = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 derive_more = { workspace = true }
