@@ -2853,7 +2853,7 @@ dependencies = [
 
 [[package]]
 name = "krabka-connect"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "assert2",
  "async-trait",
@@ -2871,7 +2871,7 @@ dependencies = [
 
 [[package]]
 name = "krabka-connect-derive"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "assert2",
  "datatest-stable",
@@ -2885,7 +2885,7 @@ dependencies = [
 
 [[package]]
 name = "krabka-connect-postgres"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "assert2",
  "async-trait",
@@ -2910,7 +2910,7 @@ dependencies = [
 
 [[package]]
 name = "krabka-connect-worker"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "assert2",
@@ -3190,7 +3190,7 @@ dependencies = [
 
 [[package]]
 name = "krabka-replicator"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "assert2",

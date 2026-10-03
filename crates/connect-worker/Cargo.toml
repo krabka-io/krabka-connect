@@ -29,9 +29,9 @@ bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 krabka-client-core = { workspace = true }
 krabka-client-producer = { workspace = true }
-krabka-connect = { version = "0.4.0", path = "../connect" }
-krabka-connect-postgres = { version = "0.4.0", path = "../connect-postgres" }
-krabka-replicator = { version = "0.4.0", path = "../replicator" }
+krabka-connect = { version = "0.4.1", path = "../connect" }
+krabka-connect-postgres = { version = "0.4.1", path = "../connect-postgres" }
+krabka-replicator = { version = "0.4.1", path = "../replicator" }
 krabka-security = { workspace = true }
 krabka-units = { workspace = true }
 prometheus-client = { workspace = true }
