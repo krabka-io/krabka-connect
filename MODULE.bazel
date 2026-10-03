@@ -226,3 +226,45 @@ crate.annotation(
     repositories = ["mutants"],
 )
 use_repo(crate, "crates", "mutants")
+
+# Member directories for coordinated Git source dependencies.
+[
+    crate.annotation(
+        crate = name,
+        strip_prefix = directory,
+        workspace_cargo_toml = "Cargo.toml",
+    )
+    for name, directory in {
+        "krabka-admin-ui": "crates/admin-ui",
+        "krabka-app-sdk": "crates/app-sdk",
+        "krabka-backup": "crates/backup-cli",
+        "krabka-barrier": "crates/barrier-cli",
+        "krabka-bench-driver": "crates/bench-driver",
+        "krabka-blockstore": "crates/blockstore",
+        "krabka-cli": "crates/krabka-cli",
+        "krabka-client-coordination": "crates/client-coordination",
+        "krabka-docgen": "crates/docgen",
+        "krabka-gateway": "crates/gateway",
+        "krabka-guard": "crates/guard-cli",
+        "krabka-hlc": "crates/hlc",
+        "krabka-integration": "crates/integration",
+        "krabka-log-iobench": "crates/log-iobench",
+        "krabka-logql": "crates/logql",
+        "krabka-metrics": "crates/metrics",
+        "krabka-metrics-service": "crates/metrics-service",
+        "krabka-o11y-verified": "crates/verified",
+        "krabka-observability": "crates/observability",
+        "krabka-operator": "crates/krabka-operator",
+        "krabka-parse-benches": "crates/parse-benches",
+        "krabka-pprof": "crates/pprof",
+        "krabka-profiles": "crates/profiles",
+        "krabka-promql": "crates/promql",
+        "krabka-protocol-codegen": "crates/protocol-codegen",
+        "krabka-query-frontend": "crates/query-frontend",
+        "krabka-rebalancer": "crates/rebalancer",
+        "krabka-restore": "crates/restore",
+        "krabka-sdk-conformance": "crates/sdk-conformance",
+        "krabka-traceql": "crates/traceql",
+        "krabka-traces": "crates/traces",
+    }.items()
+]
