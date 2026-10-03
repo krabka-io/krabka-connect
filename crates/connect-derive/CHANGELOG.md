@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.4.1] — 2026-10-03
+
+### Changed
+
+- Align the derive crate version with the connector framework's 0.4.1 release.
+  The derive macro API is unchanged.
+
 ## [0.4.0] — 2026-08-12
 
 
@@ -37,4 +45,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.8] — 2026-06-23
 
 ## [0.3.7] — 2026-06-17
-

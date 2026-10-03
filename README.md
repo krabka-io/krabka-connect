@@ -58,6 +58,14 @@ Each push to `main` publishes the image with the commit SHA as its tag. A `v*`
 tag promotes that image to the version tag, and to `latest` when it is the
 newest release.
 
+## Releases
+
+Releases provide versioned Git source and the worker image. This repository
+does not publish crates to crates.io. Consume `krabka-connect` and
+`krabka-connect-derive` from this repository at a release tag or an immutable
+Git revision, with the sibling source patches described below. Their changelogs
+record the changes included in each source release.
+
 ## Sibling revisions
 
 Sibling crates are declared against crates.io in the member manifests and pinned

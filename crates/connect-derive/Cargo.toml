@@ -1,5 +1,6 @@
 [package]
 name = "krabka-connect-derive"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,9 +25,7 @@ quote = { workspace = true }
 syn = { workspace = true }
 
 [dev-dependencies]
-# Dev-only path dependency. Keep the crates.io requirement on the released
-# minor line so `cargo publish` can package this crate before krabka-connect is
-# published at the same workspace version.
+# Dev-only path dependency on the connector framework in this source workspace.
 krabka-connect = { path = "../connect", default-features = false }
 datatest-stable = { workspace = true }
 trybuild = { workspace = true }

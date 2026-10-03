@@ -48,7 +48,7 @@ assert2 = { workspace = true }
 axum = { workspace = true }
 krabka-broker = { workspace = true, features = ["test-helpers"] }
 krabka-client-consumer = { workspace = true }
-krabka-schema-registry = { git = "https://github.com/krabka-io/krabka-schema-registry", rev = "a7b5964f7536b07a36a1f440d4af65c0bf6609dd" }
+krabka-schema-registry = { git = "https://github.com/krabka-io/krabka-schema-registry", rev = "ed08e49ef71fdf77303229b8f41e39389e37641a" }
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
 tokio-postgres = { workspace = true }
