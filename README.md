@@ -4,7 +4,7 @@ Krabka Connect: the connector framework, the connectors built on it, and the
 worker that runs them.
 
 A connector moves records between an external system and Kafka. This repository
-defines what a connector *is* — the `Source`, `Sink` and `Converter` traits every
+defines what a connector _is_ — the `Source`, `Sink` and `Converter` traits every
 one implements — ships a Postgres change-data-capture source, and provides the
 runtime that drives a connector, checkpoints its progress, and resumes it after
 a restart.
@@ -20,13 +20,13 @@ integration suites boot.
 
 ## Crates
 
-| Crate | What it is |
-| --- | --- |
-| `krabka-connect` | The connector SPI: `Source`, `Sink`, `Converter`, and the checkpoint contract between them |
-| `krabka-connect-derive` | Derive macros for connector configuration |
-| `krabka-connect-postgres` | A Postgres change-data-capture source, over logical decoding |
-| `krabka-connect-worker` | The runtime: polls a source, batches into a sink, and checkpoints |
-| `krabka-replicator` | Cluster-to-cluster replication, wire-compatible with MirrorMaker 2 |
+| Crate                     | What it is                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| `krabka-connect`          | The connector SPI: `Source`, `Sink`, `Converter`, and the checkpoint contract between them |
+| `krabka-connect-derive`   | Derive macros for connector configuration                                                  |
+| `krabka-connect-postgres` | A Postgres change-data-capture source, over logical decoding                               |
+| `krabka-connect-worker`   | The runtime: polls a source, batches into a sink, and checkpoints                          |
+| `krabka-replicator`       | Cluster-to-cluster replication, wire-compatible with MirrorMaker 2                         |
 
 ## Build
 
