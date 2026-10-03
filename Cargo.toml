@@ -71,16 +71,16 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 trybuild = "1"
 # Sibling repositories. Declared against crates.io here and in the member
 # manifests; the patch table below is the single place a revision is bumped.
-krabka-ids = "0.4.0"
-krabka-security = "0.4.0"
-krabka-units = "0.4.0"
-krabka-client-admin = "0.4.0"
-krabka-client-consumer = "0.4.0"
-krabka-client-core = "0.4.0"
-krabka-client-producer = "0.4.0"
-krabka-logfmt = "0.6.1"
-krabka-broker = "0.6.1"
-krabka-schema-serde = "0.4.0"
+krabka-ids = "0.5.0"
+krabka-security = "0.5.0"
+krabka-units = "0.5.0"
+krabka-client-admin = "0.5.0"
+krabka-client-consumer = "0.5.0"
+krabka-client-core = "0.5.0"
+krabka-client-producer = "0.5.0"
+krabka-logfmt = "0.7.0"
+krabka-broker = "0.7.0"
+krabka-schema-serde = "0.4.1"
 
 # Every crate each sibling publishes is listed, not only the ones this repo
 # names directly: cargo ignores a dependency's own patch table, so a crate
