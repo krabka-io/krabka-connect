@@ -22,7 +22,7 @@ ignore = [
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
     # RSA "Marvin" timing side-channel. Pulled in transitively by `picky`
-    # (a hard dependency of the vendored `sspi` Kerberos stack). Our GSSAPI
+    # (a hard dependency of the `krabka-sspi` Kerberos stack). Our GSSAPI
     # path is auth-only over AES keytab keys and performs no RSA private-key
     # operations (no PKINIT), so the network-observable timing leak does not
     # apply. The advisory has no fixed release available.
@@ -62,7 +62,7 @@ exceptions = [
     # permissive PostgreSQL License allowance scoped to that crate.
     { allow = ["PostgreSQL"], crate = "pglz" },
     # portpicker is public-domain-equivalent (The Unlicense, OSI-approved and
-    # FSF Free/Libre). Pulled in transitively via the vendored `sspi` crate's
+    # FSF Free/Libre). Pulled in transitively via the `krabka-sspi` crate's
     # `network_client` feature, which we need for KDC communication.
     { allow = ["Unlicense"], crate = "portpicker" },
     # xxhash-rust is BSL-1.0 (Boost, OSI-approved and FSF Free/Libre — a
@@ -104,7 +104,6 @@ allow-git = [
     "https://github.com/krabka-io/krabka-rebalancer",
     "https://github.com/krabka-io/krabka-schema-registry",
     "https://github.com/krabka-io/krabka-streams-rs",
-    "https://github.com/robot-head/sspi-rs",
     "https://github.com/testcontainers/testcontainers-rs-modules-community",
 ]
 
