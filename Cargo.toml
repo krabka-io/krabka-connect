@@ -131,6 +131,7 @@ krabka-log = { git = "https://github.com/krabka-io/krabka-broker", rev = "d940b2
 krabka-log-iobench = { git = "https://github.com/krabka-io/krabka-broker", rev = "d940b2c2e4a8b9b5026da4fc484c7369528e33d3" }
 krabka-logfmt = { git = "https://github.com/krabka-io/krabka-broker", rev = "d940b2c2e4a8b9b5026da4fc484c7369528e33d3" }
 krabka-logql = { git = "https://github.com/krabka-io/krabka-o11y", rev = "5614722a52f6cfb4fc56133a535efa532a7d136a" }
+krabka-macros = { git = "https://github.com/krabka-io/krabka-broker", rev = "d940b2c2e4a8b9b5026da4fc484c7369528e33d3" }
 krabka-metadata = { git = "https://github.com/krabka-io/krabka-protocol", rev = "574e0e385f5d5187979049aa0578f1abf3fa123b" }
 krabka-metrics = { git = "https://github.com/krabka-io/krabka-o11y", rev = "5614722a52f6cfb4fc56133a535efa532a7d136a" }
 krabka-metrics-service = { git = "https://github.com/krabka-io/krabka-o11y", rev = "5614722a52f6cfb4fc56133a535efa532a7d136a" }
