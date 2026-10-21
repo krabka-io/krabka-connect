@@ -21,7 +21,7 @@ jobs:
   # image digest from the run's `delivery-image` artifact.
   verify:
     name: verify
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     outputs:
       delivery_run: ${{ steps.main-ci.outputs.delivery_run }}
@@ -29,6 +29,8 @@ jobs:
       contents: read
       actions: read
     steps:
+      - name: Keep temporary files off the size-limited /tmp tmpfs
+        run: echo "TMPDIR=${RUNNER_TEMP}" >> "${GITHUB_ENV}"
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -62,7 +64,7 @@ jobs:
 
   release:
     name: release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: verify
     timeout-minutes: 30
     permissions:
@@ -70,6 +72,8 @@ jobs:
       actions: read
       packages: write
     steps:
+      - name: Keep temporary files off the size-limited /tmp tmpfs
+        run: echo "TMPDIR=${RUNNER_TEMP}" >> "${GITHUB_ENV}"
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
