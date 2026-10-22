@@ -834,6 +834,10 @@ mod tests {
 
         sink.begin().await.unwrap();
         sink.put(records()).await.unwrap();
+        // Exercise visibility after both the data and sync deliveries have
+        // completed, while their enclosing transaction is still uncommitted.
+        let uncommitted_syncs = sink.flush_pending().await.unwrap();
+        assert2::assert!(uncommitted_syncs.len() == 130);
         sink.abort().await.unwrap();
 
         let store =
