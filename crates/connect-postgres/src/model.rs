@@ -40,13 +40,13 @@ pub struct ColumnSchema {
     pub key: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ColumnValue {
     pub name: String,
     pub value: ScalarValue,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ScalarValue {
     Null,
     UnchangedToast,

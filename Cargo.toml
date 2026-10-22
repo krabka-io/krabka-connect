@@ -41,6 +41,7 @@ clap = { version = "4", features = ["derive"] }
 datatest-stable = "0.3.3"
 derive_more = { version = "2", features = ["display", "from", "into", "deref", "as_ref", "constructor", "from_str", "add", "add_assign", "mul", "sum"] }
 futures-util = { version = "0.3", features = ["sink"] }
+indexmap = "2"
 mockall = "0.15"
 mutants = "0.0.4"
 postgres-types = "0.2"
