@@ -25,6 +25,8 @@ use crate::{
     residency::ResidencyGate,
 };
 
+const OFFSET_SYNC_WINDOW: usize = 64;
+
 /// One in-flight produce awaiting its broker ack: the delivery handle plus the
 /// source-side coordinates needed to build the [`OffsetSync`] once the ack
 /// supplies the downstream offset.
@@ -256,34 +258,49 @@ impl TargetSink {
         let pending = std::mem::take(&mut self.pending);
         let mut completed = Vec::with_capacity(pending.len());
 
-        for PendingProduce {
-            rx,
-            topic,
-            partition,
-            upstream,
-        } in pending
-        {
-            let meta = rx
-                .await
-                .map_err(|error| ConnectError::Backend(error.to_string()))?;
-            let offset_sync = OffsetSync {
+        // Keep acknowledgement memory bounded while allowing the producer to
+        // batch sync records instead of paying one delivery round trip per row.
+        let mut pending = pending.into_iter().peekable();
+        while pending.peek().is_some() {
+            let mut sync_deliveries = Vec::with_capacity(OFFSET_SYNC_WINDOW);
+            for PendingProduce {
+                rx,
                 topic,
                 partition,
                 upstream,
-                downstream: DownstreamOffset(meta.offset),
-            };
-            self.producer
-                .send(ProducerRecord {
-                    topic: self.offset_syncs_topic.clone(),
-                    partition: None,
-                    key: Some(Bytes::from(offset_sync.key_bytes())),
-                    value: Some(Bytes::from(offset_sync.value_bytes())),
-                    headers: Vec::new(),
-                    timestamp_ms: None,
-                })
-                .await
-                .map_err(|error| ConnectError::Backend(error.to_string()))?;
-            completed.push(offset_sync);
+            } in pending.by_ref().take(OFFSET_SYNC_WINDOW)
+            {
+                let meta = rx
+                    .await
+                    .map_err(|error| ConnectError::Backend(error.to_string()))?;
+                let offset_sync = OffsetSync {
+                    topic,
+                    partition,
+                    upstream,
+                    downstream: DownstreamOffset(meta.offset),
+                };
+                let delivery = self
+                    .producer
+                    .enqueue(ProducerRecord {
+                        topic: self.offset_syncs_topic.clone(),
+                        partition: None,
+                        key: Some(Bytes::from(offset_sync.key_bytes())),
+                        value: Some(Bytes::from(offset_sync.value_bytes())),
+                        headers: Vec::new(),
+                        timestamp_ms: None,
+                    })
+                    .await
+                    .map_err(|error| ConnectError::Backend(error.to_string()))?;
+                sync_deliveries.push((delivery, offset_sync));
+            }
+            // Confirm every sync before returning to checkpoint or transaction
+            // commit. An enqueue alone does not establish durable delivery.
+            for (delivery, offset_sync) in sync_deliveries {
+                delivery
+                    .await
+                    .map_err(|error| ConnectError::Backend(error.to_string()))?;
+                completed.push(offset_sync);
+            }
         }
 
         self.producer
@@ -646,22 +663,45 @@ mod tests {
             }),
         );
 
-        sink.put(vec![allowed, denied]).await.unwrap();
+        let allowed = (0..130).map(|offset| {
+            let mut record = allowed.clone();
+            record.value.as_mut().unwrap().offset = Offset(offset);
+            record
+        });
+        sink.put(allowed.chain([denied]).collect()).await.unwrap();
         sink.flush().await.unwrap();
 
         assert2::assert!(
-            crate::test_util::topic_record_count(&target, "us-east.orders").await == 1
+            crate::test_util::topic_record_count(&target, "us-east.orders").await == 130
         );
         assert2::assert!(
             crate::test_util::topic_record_count(&target, "us-east.secret").await == 0
         );
 
         let syncs = sink.drain_offset_syncs();
-        assert2::assert!(
-            syncs
-                .iter()
-                .any(|s| s.topic == "orders" && s.partition == 2 && s.upstream == 5)
-        );
+        let expected: Vec<_> = (0..130)
+            .map(|offset| OffsetSync {
+                topic: "orders".into(),
+                partition: PartitionIndex(2),
+                upstream: UpstreamOffset(offset),
+                downstream: DownstreamOffset(offset),
+            })
+            .collect();
+        assert2::assert!(syncs == expected);
+        let persisted =
+            crate::admin_util::read_all(&target, &OffsetSync::topic_name("us-east"), None)
+                .await
+                .unwrap();
+        let expected: Vec<_> = expected
+            .iter()
+            .map(|sync| {
+                (
+                    Some(Bytes::from(sync.key_bytes())),
+                    Some(Bytes::from(sync.value_bytes())),
+                )
+            })
+            .collect();
+        assert2::assert!(persisted == expected);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -773,23 +813,31 @@ mod tests {
         })
         .await
         .unwrap();
-        let record = || {
-            ConnectRecord::new(
-                None,
-                Some(ReplicatedRecord {
-                    topic: "orders".into(),
-                    partition: PartitionIndex(0),
-                    offset: Offset(5),
-                    timestamp: Timestamp(1),
-                    key: Some("k".into()),
-                    value: Some("v".into()),
-                    headers: Vec::new(),
-                }),
-            )
+        let records = || {
+            (0..130)
+                .map(|offset| {
+                    ConnectRecord::new(
+                        None,
+                        Some(ReplicatedRecord {
+                            topic: "orders".into(),
+                            partition: PartitionIndex(0),
+                            offset: Offset(offset),
+                            timestamp: Timestamp(1),
+                            key: Some("k".into()),
+                            value: Some("v".into()),
+                            headers: Vec::new(),
+                        }),
+                    )
+                })
+                .collect()
         };
 
         sink.begin().await.unwrap();
-        sink.put(vec![record()]).await.unwrap();
+        sink.put(records()).await.unwrap();
+        // Exercise visibility after both the data and sync deliveries have
+        // completed, while their enclosing transaction is still uncommitted.
+        let uncommitted_syncs = sink.flush_pending().await.unwrap();
+        assert2::assert!(uncommitted_syncs.len() == 130);
         sink.abort().await.unwrap();
 
         let store =
@@ -812,7 +860,7 @@ mod tests {
         assert2::assert!(sink.drain_offset_syncs().is_empty());
 
         sink.begin().await.unwrap();
-        sink.put(vec![record()]).await.unwrap();
+        sink.put(records()).await.unwrap();
         sink.commit().await.unwrap();
 
         assert2::assert!(
@@ -820,17 +868,17 @@ mod tests {
                 .await
                 .unwrap()
                 .len()
-                == 1
+                == 130
         );
         assert2::assert!(
             crate::admin_util::read_all(&target, &OffsetSync::topic_name("us-east"), None,)
                 .await
                 .unwrap()
                 .len()
-                == 1
+                == 130
         );
         let checkpoint = store.load().await.unwrap().unwrap();
-        assert2::assert!(checkpoint.position.get("orders-0") == Some(&OffsetValue::Long(6)));
-        assert2::assert!(sink.drain_offset_syncs().len() == 1);
+        assert2::assert!(checkpoint.position.get("orders-0") == Some(&OffsetValue::Long(130)));
+        assert2::assert!(sink.drain_offset_syncs().len() == 130);
     }
 }
