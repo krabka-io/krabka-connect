@@ -2,7 +2,7 @@
 //! to the target and emit source-to-target offset syncs.
 
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashSet, VecDeque},
     sync::Arc,
 };
 
@@ -26,6 +26,41 @@ use crate::{
 };
 
 const OFFSET_SYNC_WINDOW: usize = 64;
+
+/// Optional diagnostics, independent of the durable offset-sync records.
+#[derive(Default)]
+struct OffsetSyncObservations {
+    capacity: usize,
+    records: VecDeque<OffsetSync>,
+}
+
+impl OffsetSyncObservations {
+    fn set_capacity(&mut self, capacity: usize) {
+        self.capacity = capacity;
+        if capacity == 0 {
+            self.records = VecDeque::new();
+        } else {
+            let discarded = self.records.len().saturating_sub(capacity);
+            self.records.drain(..discarded);
+            self.records.shrink_to(capacity);
+        }
+    }
+
+    fn record(&mut self, completed: Vec<OffsetSync>) {
+        if self.capacity == 0 {
+            return;
+        }
+        let incoming = completed.len().min(self.capacity);
+        let discarded = self.records.len().saturating_sub(self.capacity - incoming);
+        self.records.drain(..discarded);
+        let skipped = completed.len().saturating_sub(self.capacity);
+        self.records.extend(completed.into_iter().skip(skipped));
+    }
+
+    fn drain(&mut self) -> Vec<OffsetSync> {
+        self.records.drain(..).collect()
+    }
+}
 
 /// One in-flight produce awaiting its broker ack: the delivery handle plus the
 /// source-side coordinates needed to build the [`OffsetSync`] once the ack
@@ -97,8 +132,8 @@ pub struct TargetSink {
     committed_checkpoint: SourceOffset,
     /// Source position staged by the current transaction.
     pending_checkpoint: Option<SourceOffset>,
-    /// Completed offset-syncs, accessible through [`drain_offset_syncs`].
-    offset_syncs: Vec<OffsetSync>,
+    /// Bounded, opt-in diagnostics; never used to publish or checkpoint syncs.
+    offset_syncs: OffsetSyncObservations,
 }
 
 impl TargetSink {
@@ -227,14 +262,26 @@ impl TargetSink {
             transaction: None,
             committed_checkpoint,
             pending_checkpoint: None,
-            offset_syncs: Vec::new(),
+            offset_syncs: OffsetSyncObservations::default(),
         })
     }
 
-    /// Return and clear all completed [`OffsetSync`] records accumulated since
-    /// the last call, or since construction.
+    /// Retain at most `capacity` recent completed offset-syncs for observation.
+    ///
+    /// Observation is disabled by default. A zero capacity disables it and
+    /// releases retained records. Older observations are dropped when the
+    /// capacity is exceeded; durable sync publication is unaffected.
+    pub fn set_offset_sync_observation_capacity(&mut self, capacity: usize) {
+        self.offset_syncs.set_capacity(capacity);
+    }
+
+    /// Return and clear retained [`OffsetSync`] observations, oldest first.
+    ///
+    /// Returns an empty vector unless observation was explicitly enabled with
+    /// [`Self::set_offset_sync_observation_capacity`]. Only successful flushes
+    /// and committed transactions become observable.
     pub fn drain_offset_syncs(&mut self) -> Vec<OffsetSync> {
-        std::mem::take(&mut self.offset_syncs)
+        self.offset_syncs.drain()
     }
 
     fn stage_source_offset(&mut self, record: &ReplicatedRecord) -> Result<(), ConnectError> {
@@ -517,7 +564,7 @@ impl Sink<(), ReplicatedRecord> for TargetSink {
             ));
         }
         let completed = self.flush_pending().await?;
-        self.offset_syncs.extend(completed);
+        self.offset_syncs.record(completed);
         Ok(())
     }
 
@@ -562,7 +609,7 @@ impl Sink<(), ReplicatedRecord> for TargetSink {
             .expect("transaction checked immediately above");
         match transaction.commit().await {
             Ok(()) => {
-                self.offset_syncs.extend(completed);
+                self.offset_syncs.record(completed);
                 self.committed_checkpoint = self
                     .pending_checkpoint
                     .take()
@@ -607,6 +654,137 @@ mod tests {
     use super::*;
     use crate::ids::{Offset, Timestamp};
 
+    fn observation(offset: i64) -> OffsetSync {
+        OffsetSync {
+            topic: "orders".into(),
+            partition: PartitionIndex(0),
+            upstream: UpstreamOffset(offset),
+            downstream: DownstreamOffset(offset),
+        }
+    }
+
+    #[test]
+    fn observations_are_disabled_by_default_and_bounded_when_enabled() {
+        for capacity in [0, 3, 64] {
+            let mut observations = OffsetSyncObservations::default();
+            observations.set_capacity(capacity);
+            for batch in 0..1_000 {
+                observations.record((batch * 500..(batch + 1) * 500).map(observation).collect());
+                assert2::assert!(observations.records.len() <= capacity);
+                if capacity == 0 {
+                    assert2::assert!(observations.records.capacity() == 0);
+                }
+            }
+            let expected: Vec<_> = (500_000 - i64::try_from(capacity).unwrap()..500_000)
+                .map(observation)
+                .collect();
+            assert2::assert!(observations.drain() == expected);
+            assert2::assert!(observations.drain().is_empty());
+        }
+    }
+
+    #[test]
+    fn changing_observation_capacity_keeps_the_newest_records_and_can_disable_it() {
+        let mut observations = OffsetSyncObservations::default();
+        observations.set_capacity(5);
+        observations.record((0..4).map(observation).collect());
+        observations.record((4..7).map(observation).collect());
+        observations.set_capacity(3);
+        assert2::assert!(observations.drain() == (4..7).map(observation).collect::<Vec<_>>());
+        observations.record(vec![observation(7)]);
+        observations.set_capacity(0);
+        assert2::assert!(observations.drain().is_empty());
+        assert2::assert!(observations.records.capacity() == 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn repeated_flushes_and_commits_publish_every_sync_without_retaining_observations() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let broker = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
+            dir.path().to_path_buf(),
+        ))
+        .await
+        .unwrap();
+        let target = broker.listen_addr().to_string();
+
+        for (delivery, alias) in [
+            (Delivery::AtLeastOnce, "alo"),
+            (Delivery::ExactlyOnce, "eos"),
+        ] {
+            let mut sink = TargetSink::start(SinkParams {
+                target_bootstrap: target.clone(),
+                flow_name: alias.into(),
+                source_alias: alias.into(),
+                delivery,
+                naming: NamingPolicy::Default,
+                target_zones: Vec::new(),
+                policies: Vec::new(),
+                security: None,
+                source_partition_counts: [("orders".to_owned(), 1)].into(),
+            })
+            .await
+            .unwrap();
+            for batch in 0..20 {
+                if delivery == Delivery::ExactlyOnce {
+                    sink.begin().await.unwrap();
+                }
+                let records = (batch * 8..(batch + 1) * 8)
+                    .map(|offset| {
+                        ConnectRecord::new(
+                            None,
+                            Some(ReplicatedRecord {
+                                topic: "orders".into(),
+                                partition: PartitionIndex(0),
+                                offset: Offset(offset),
+                                timestamp: Timestamp(1),
+                                key: None,
+                                value: Some("v".into()),
+                                headers: Vec::new(),
+                            }),
+                        )
+                    })
+                    .collect();
+                sink.put(records).await.unwrap();
+                if delivery == Delivery::ExactlyOnce {
+                    sink.commit().await.unwrap();
+                } else {
+                    sink.flush().await.unwrap();
+                }
+                assert2::assert!(sink.offset_syncs.records.is_empty());
+                assert2::assert!(sink.offset_syncs.records.capacity() == 0);
+            }
+            let durable =
+                crate::admin_util::read_all(&target, &OffsetSync::topic_name(alias), None)
+                    .await
+                    .unwrap();
+            let expected: Vec<_> = (0..160)
+                .map(|offset| {
+                    let mut sync = observation(offset);
+                    if delivery == Delivery::ExactlyOnce {
+                        // Each earlier transaction contributes one control
+                        // marker in the target data partition.
+                        sync.downstream = DownstreamOffset(offset + offset / 8);
+                    }
+                    (
+                        Some(Bytes::from(sync.key_bytes())),
+                        Some(Bytes::from(sync.value_bytes())),
+                    )
+                })
+                .collect();
+            assert2::assert!(durable == expected);
+            assert2::assert!(
+                crate::test_util::topic_record_count(&target, &format!("{alias}.orders")).await
+                    == 160
+            );
+            if delivery == Delivery::ExactlyOnce {
+                assert2::assert!(
+                    sink.committed_checkpoint.position.get("orders-0")
+                        == Some(&OffsetValue::Long(160))
+                );
+            }
+        }
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn produces_renamed_and_records_offset_sync_but_blocks_denied() {
         let dir = tempfile::TempDir::new().unwrap();
@@ -638,6 +816,7 @@ mod tests {
         .await
         .unwrap();
 
+        sink.set_offset_sync_observation_capacity(130);
         let allowed = ConnectRecord::new(
             None,
             Some(ReplicatedRecord {
@@ -813,6 +992,7 @@ mod tests {
         })
         .await
         .unwrap();
+        sink.set_offset_sync_observation_capacity(130);
         let records = || {
             (0..130)
                 .map(|offset| {
