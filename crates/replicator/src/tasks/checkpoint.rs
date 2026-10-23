@@ -271,6 +271,7 @@ impl CheckpointTask {
                                 offset_syncs_topic.clone(),
                                 params.security.clone(),
                                 client_resource_policy,
+                                &runtime_policy,
                             )
                             .await?,
                         );
@@ -355,10 +356,17 @@ impl OffsetSyncReader {
         topic: String,
         security: Option<krabka_client_core::security::ClientSecurity>,
         policy: ClientResourcePolicy,
+        runtime_policy: &ReplicatorRuntimePolicy,
     ) -> Result<Self, String> {
         let admin = AdminClient::connect_with_options(
             &[bootstrap.to_owned()],
             krabka_client_core::ConnectionOptions {
+                dns_timeout: krabka_client_core::ClientDnsTimeout::new(
+                    runtime_policy.client_dns_timeout,
+                )?,
+                socket_connection_setup_timeout: runtime_policy.client_connect_timeout,
+                socket_connection_setup_timeout_max: runtime_policy.client_connect_timeout,
+                request_timeout: runtime_policy.client_request_timeout,
                 dispatch_queue_capacity: policy.dispatch_queue_capacity,
                 frame_max: policy.frame_max,
                 security: security.clone().map(Box::new),
@@ -601,6 +609,35 @@ mod tests {
         crate::test_util::produce(bootstrap, topic, &sync.key_bytes(), &sync.value_bytes()).await;
     }
 
+    #[tokio::test]
+    async fn reader_initial_admin_request_obeys_configured_timeout() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let bootstrap = listener.local_addr().unwrap().to_string();
+        // Accept TCP but never answer ApiVersions: the configured request
+        // timeout must also apply to the admin's initial protocol exchange.
+        let server = tokio::spawn(async move {
+            let (_socket, _) = listener.accept().await.unwrap();
+            std::future::pending::<()>().await;
+        });
+        let policy = ReplicatorRuntimePolicy {
+            client_request_timeout: krabka_units::millis(50),
+            ..ReplicatorRuntimePolicy::default()
+        };
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            OffsetSyncReader::connect(
+                &bootstrap,
+                "offset-syncs".into(),
+                None,
+                ClientResourcePolicy::default(),
+                &policy,
+            ),
+        )
+        .await;
+        server.abort();
+        assert2::assert!(matches!(result, Ok(Err(_))));
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn reader_streams_only_offsets_appended_since_previous_cycle() {
         let dir = tempfile::TempDir::new().unwrap();
@@ -621,6 +658,7 @@ mod tests {
             topic.clone(),
             None,
             ClientResourcePolicy::default(),
+            &ReplicatorRuntimePolicy::default(),
         )
         .await
         .unwrap();
@@ -640,10 +678,15 @@ mod tests {
         // A restart owns no persisted cursor or translation state and safely
         // reconstructs both from all retained records.
         reader.close().await.unwrap();
-        let mut restarted =
-            OffsetSyncReader::connect(&bootstrap, topic, None, ClientResourcePolicy::default())
-                .await
-                .unwrap();
+        let mut restarted = OffsetSyncReader::connect(
+            &bootstrap,
+            topic,
+            None,
+            ClientResourcePolicy::default(),
+            &policy,
+        )
+        .await
+        .unwrap();
         let mut rebuilt = OffsetSyncStore::default();
         assert2::assert!(restarted.read_cycle(&mut rebuilt, &policy).await.unwrap() == 5);
         restarted.close().await.unwrap();
@@ -666,6 +709,7 @@ mod tests {
             topic.clone(),
             None,
             ClientResourcePolicy::default(),
+            &ReplicatorRuntimePolicy::default(),
         )
         .await
         .unwrap();
@@ -712,6 +756,7 @@ mod tests {
             "missing-offset-syncs".into(),
             None,
             ClientResourcePolicy::default(),
+            &ReplicatorRuntimePolicy::default(),
         )
         .await
         .unwrap();
