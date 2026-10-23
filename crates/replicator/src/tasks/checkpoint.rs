@@ -407,16 +407,22 @@ impl OffsetSyncReader {
             .topics
             .into_iter()
             .find(|entry| entry.name == self.topic);
-        if let Some(error) = entry.as_ref().and_then(|entry| entry.error.as_ref()) {
-            if error.code != 3 {
-                return Err(format!("{error:?}"));
-            }
+        if let Some(error) = entry.as_ref().and_then(|entry| entry.error.as_ref())
+            && error.code != 3
+        {
+            return Err(format!("{error:?}"));
         }
         let topic_id = entry
             .as_ref()
             .and_then(|entry| entry.topic_id)
             .map(|id| id.to_string());
         if topic_id != self.topic_id {
+            // Drop assignment ownership as well as cursors: seeking the same
+            // numeric offset must not retain an old topic's buffered fetches.
+            self.consumer
+                .unsubscribe()
+                .await
+                .map_err(|error| error.to_string())?;
             store.clear();
             self.cursors.clear();
             self.topic_id = topic_id;
@@ -674,7 +680,10 @@ mod tests {
         });
         reader
             .admin
-            .delete_topics(&[&topic], Default::default())
+            .delete_topics(
+                &[&topic],
+                krabka_client_admin::topics::TopicMutationOptions::default(),
+            )
             .await
             .unwrap();
         crate::test_util::create_topic(&bootstrap, &topic, 1).await;
