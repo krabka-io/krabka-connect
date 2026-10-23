@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -42,10 +42,13 @@ pub struct PostgresWalSource {
     relation_cache: RelationCache,
     encoder: PostgresProtoEncoder,
     pending: VecDeque<LogicalEvent>,
+    remaining_transaction_rows: HashMap<PgLsn, usize>,
     transaction: Option<TransactionState>,
     transaction_rows: IndexSet<RowEvent>,
     checkpoint: Option<PgLsn>,
     resume_lsn: Option<PgLsn>,
+    #[cfg(test)]
+    transaction_boundary_checks: usize,
 }
 
 impl PostgresWalSource {
@@ -56,6 +59,19 @@ impl PostgresWalSource {
         pending: VecDeque<LogicalEvent>,
         encoder: PostgresProtoEncoder,
     ) -> Self {
+        let remaining_transaction_rows =
+            pending
+                .iter()
+                .fold(HashMap::<PgLsn, usize>::new(), |mut remaining, event| {
+                    if let LogicalEvent::Row(RowEvent {
+                        commit_lsn: Some(commit_lsn),
+                        ..
+                    }) = event
+                    {
+                        *remaining.entry(*commit_lsn).or_default() += 1;
+                    }
+                    remaining
+                });
         Self {
             config,
             database_name,
@@ -63,10 +79,13 @@ impl PostgresWalSource {
             relation_cache: RelationCache::default(),
             encoder,
             pending,
+            remaining_transaction_rows,
             transaction: None,
             transaction_rows: IndexSet::new(),
             checkpoint: None,
             resume_lsn: None,
+            #[cfg(test)]
+            transaction_boundary_checks: 0,
         }
     }
 
@@ -228,6 +247,11 @@ impl PostgresWalSource {
             return;
         }
 
+        let row_count = self.transaction_rows.len();
+        if row_count > 0 {
+            *self.remaining_transaction_rows.entry(end_lsn).or_default() += row_count;
+        }
+
         for mut row in self.transaction_rows.drain(..) {
             row.commit_lsn = Some(end_lsn);
             row.txid = Some(transaction.xid);
@@ -265,6 +289,27 @@ impl PostgresWalSource {
         self.checkpoint
             .is_some_and(|checkpoint_lsn| lsn <= checkpoint_lsn)
     }
+
+    fn finish_pending_transaction_row(&mut self, commit_lsn: Option<PgLsn>) -> bool {
+        let Some(commit_lsn) = commit_lsn else {
+            return true;
+        };
+        #[cfg(test)]
+        {
+            self.transaction_boundary_checks += 1;
+        }
+
+        let Some(remaining) = self.remaining_transaction_rows.get_mut(&commit_lsn) else {
+            return true;
+        };
+        *remaining -= 1;
+        if *remaining == 0 {
+            self.remaining_transaction_rows.remove(&commit_lsn);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 #[async_trait]
@@ -299,6 +344,7 @@ impl Source<Bytes, Bytes> for PostgresWalSource {
 
                     if self.should_skip_row(&row) {
                         self.pending.pop_front();
+                        self.finish_pending_transaction_row(row.commit_lsn);
                         continue;
                     }
 
@@ -326,12 +372,7 @@ impl Source<Bytes, Bytes> for PostgresWalSource {
                     }
 
                     self.pending.pop_front();
-                    let transaction_has_more_rows = transaction_lsn.is_some_and(|lsn| {
-                        self.pending.iter().any(|event| {
-                            matches!(event, LogicalEvent::Row(row) if row.commit_lsn == Some(lsn))
-                        })
-                    });
-                    if !transaction_has_more_rows {
+                    if self.finish_pending_transaction_row(transaction_lsn) {
                         self.checkpoint = Some(diff.lsn);
                     }
                     return Ok(Some(record));
@@ -1177,6 +1218,136 @@ mod tests {
             )
         );
         check!(source.poll().await.expect("poll succeeds").is_none());
+    }
+
+    #[tokio::test]
+    async fn mixed_transactions_preserve_order_metadata_and_checkpoint_boundaries() {
+        let mut source = PostgresWalSource::scripted(config("slot_a"), "app", []).unwrap();
+        source.apply_logical_event(LogicalEvent::Relation(orders_relation()));
+        source.apply_logical_event(LogicalEvent::Begin {
+            final_lsn: PgLsn(0x40),
+            xid: TransactionId(123),
+        });
+        source.apply_logical_event(LogicalEvent::Row(insert_event(PgLsn(0x2a))));
+        source.apply_logical_event(LogicalEvent::Row(delete_event(PgLsn(0x2b))));
+        source.apply_logical_event(LogicalEvent::Commit {
+            commit_lsn: CommitLsn(PgLsn(0x41)),
+            end_lsn: EndLsn(PgLsn(0x42)),
+            commit_timestamp_ms: 1_700_000_000_123,
+        });
+        source.apply_logical_event(LogicalEvent::Relation(orders_relation()));
+        source.apply_logical_event(LogicalEvent::Begin {
+            final_lsn: PgLsn(0x50),
+            xid: TransactionId(124),
+        });
+        source.apply_logical_event(LogicalEvent::Row(insert_event(PgLsn(0x2c))));
+        source.apply_logical_event(LogicalEvent::Commit {
+            commit_lsn: CommitLsn(PgLsn(0x51)),
+            end_lsn: EndLsn(PgLsn(0x52)),
+            commit_timestamp_ms: 1_700_000_000_456,
+        });
+
+        let first = source.poll().await.unwrap().unwrap();
+        check!(source.checkpoint().is_none());
+        let second = source.poll().await.unwrap().unwrap();
+        check!(source.checkpoint() == Some(PgLsn(0x42).to_source_offset("app", "slot_a")));
+        let third = source.poll().await.unwrap().unwrap();
+
+        check!(
+            [
+                (
+                    header_value(&first, "krabka.pg.operation"),
+                    header_value(&first, "krabka.pg.lsn"),
+                    first.timestamp,
+                ),
+                (
+                    header_value(&second, "krabka.pg.operation"),
+                    header_value(&second, "krabka.pg.lsn"),
+                    second.timestamp,
+                ),
+                (
+                    header_value(&third, "krabka.pg.operation"),
+                    header_value(&third, "krabka.pg.lsn"),
+                    third.timestamp,
+                ),
+            ] == [
+                (
+                    Bytes::from_static(b"insert"),
+                    Bytes::from_static(b"0/42"),
+                    Some(1_700_000_000_123),
+                ),
+                (
+                    Bytes::from_static(b"delete"),
+                    Bytes::from_static(b"0/42"),
+                    Some(1_700_000_000_123),
+                ),
+                (
+                    Bytes::from_static(b"insert"),
+                    Bytes::from_static(b"0/52"),
+                    Some(1_700_000_000_456),
+                ),
+            ]
+        );
+        check!(source.checkpoint() == Some(PgLsn(0x52).to_source_offset("app", "slot_a")));
+    }
+
+    #[tokio::test]
+    async fn transaction_boundary_bookkeeping_scales_with_committed_rows() {
+        for transaction_count in [1_000_u32, 2_000, 4_000] {
+            let mut source = PostgresWalSource::scripted(config("slot_a"), "app", []).unwrap();
+            source.apply_logical_event(LogicalEvent::Relation(orders_relation()));
+            for index in 0..transaction_count {
+                source.apply_logical_event(LogicalEvent::Begin {
+                    final_lsn: PgLsn(u64::from(index + 1)),
+                    xid: TransactionId(i64::from(index + 1)),
+                });
+                source.apply_logical_event(LogicalEvent::Row(insert_event(PgLsn(u64::from(
+                    index + 1,
+                )))));
+                source.apply_logical_event(LogicalEvent::Commit {
+                    commit_lsn: CommitLsn(PgLsn(u64::from(index + 1))),
+                    end_lsn: EndLsn(PgLsn(u64::from(10_000 + index))),
+                    commit_timestamp_ms: i64::from(index),
+                });
+            }
+
+            let mut emitted = 0;
+            while source.poll().await.unwrap().is_some() {
+                emitted += 1;
+            }
+
+            check!(emitted == transaction_count);
+            check!(
+                source.transaction_boundary_checks
+                    == usize::try_from(transaction_count).expect("test count fits usize")
+            );
+            check!(source.remaining_transaction_rows.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn failed_transaction_final_row_keeps_boundary_for_retry() {
+        let mut source = PostgresWalSource::scripted(config("slot_a"), "app", []).unwrap();
+        source.apply_logical_event(LogicalEvent::Begin {
+            final_lsn: PgLsn(0x40),
+            xid: TransactionId(123),
+        });
+        source.apply_logical_event(LogicalEvent::Row(insert_event(PgLsn(0x2a))));
+        source.apply_logical_event(LogicalEvent::Commit {
+            commit_lsn: CommitLsn(PgLsn(0x41)),
+            end_lsn: EndLsn(PgLsn(0x42)),
+            commit_timestamp_ms: 1_700_000_000_123,
+        });
+
+        check!(source.poll().await.is_err());
+        check!(source.pending_len() == 1);
+        check!(source.checkpoint().is_none());
+        check!(source.remaining_transaction_rows.get(&PgLsn(0x42)) == Some(&1));
+
+        source.relation_cache.apply_relation(orders_relation());
+        check!(source.poll().await.unwrap().is_some());
+        check!(source.checkpoint() == Some(PgLsn(0x42).to_source_offset("app", "slot_a")));
+        check!(source.remaining_transaction_rows.is_empty());
     }
 
     #[test]
