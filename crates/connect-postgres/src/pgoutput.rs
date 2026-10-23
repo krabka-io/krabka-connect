@@ -16,13 +16,13 @@ pub struct RelationEvent {
     pub columns: Vec<ColumnSchema>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RowTupleKind {
     Full,
     Key,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RowEventKind {
     Insert,
     Update {
@@ -34,7 +34,7 @@ pub enum RowEventKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RowEvent {
     pub relation_id: RelationId,
     pub lsn: PgLsn,

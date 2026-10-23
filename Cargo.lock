@@ -2908,6 +2908,7 @@ dependencies = [
  "bytes",
  "derive_more",
  "futures-util",
+ "indexmap 2.14.1",
  "krabka-connect",
  "krabka-schema-serde",
  "mockall",

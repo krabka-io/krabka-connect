@@ -2,6 +2,7 @@ use std::collections::{HashSet, VecDeque};
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use indexmap::IndexSet;
 use krabka_connect::{ConnectError, ConnectRecord, OffsetValue, Source, SourceOffset};
 
 use crate::{
@@ -42,7 +43,7 @@ pub struct PostgresWalSource {
     encoder: PostgresProtoEncoder,
     pending: VecDeque<LogicalEvent>,
     transaction: Option<TransactionState>,
-    transaction_rows: Vec<RowEvent>,
+    transaction_rows: IndexSet<RowEvent>,
     checkpoint: Option<PgLsn>,
     resume_lsn: Option<PgLsn>,
 }
@@ -63,7 +64,7 @@ impl PostgresWalSource {
             encoder,
             pending,
             transaction: None,
-            transaction_rows: Vec::new(),
+            transaction_rows: IndexSet::new(),
             checkpoint: None,
             resume_lsn: None,
         }
@@ -212,9 +213,7 @@ impl PostgresWalSource {
         }
 
         if self.transaction.is_some() {
-            if !self.transaction_rows.contains(&row) {
-                self.transaction_rows.push(row);
-            }
+            self.transaction_rows.insert(row);
         } else {
             self.pending.push_back(LogicalEvent::Row(row));
         }
@@ -727,12 +726,14 @@ mod sql_tests {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+
     use assert2::check;
     use bytes::Bytes;
     use krabka_connect::{SecretString, Source as _};
     use krabka_schema_serde::wire::MAGIC;
 
-    use super::{LogicalEvent, PostgresWalSource, validate_database};
+    use super::{LogicalEvent, PostgresWalSource, TransactionState, validate_database};
     use crate::{
         PgLsn, PostgresSourceConfig,
         ids::{CommitLsn, EndLsn, RelationId, TransactionId},
@@ -822,6 +823,48 @@ mod tests {
             },
             values: vec![id(42), status("cancelled")],
         }
+    }
+
+    #[test]
+    fn transaction_rows_keep_order_and_distinct_payloads_while_deduplicating_replays() {
+        let mut source = PostgresWalSource::scripted(config("slot_a"), "app", []).unwrap();
+        source.transaction = Some(TransactionState {
+            xid: TransactionId(99),
+        });
+        let first = insert_event(PgLsn(42));
+        let mut changed = first.clone();
+        changed.values = vec![id(42), status("shipped")];
+        let mut later = first.clone();
+        later.lsn = PgLsn(43);
+        let deleted = delete_event(PgLsn(44));
+        let expected = vec![
+            first.clone(),
+            changed.clone(),
+            later.clone(),
+            deleted.clone(),
+        ];
+        for row in [first.clone(), changed, first, later, deleted] {
+            source.enqueue_row(row);
+        }
+        assert2::assert!(source.transaction_rows.iter().cloned().collect::<Vec<_>>() == expected);
+        source.commit_transaction(PgLsn(100), 123);
+        let expected = expected
+            .into_iter()
+            .map(|mut row| {
+                row.commit_lsn = Some(PgLsn(100));
+                row.txid = Some(TransactionId(99));
+                row.commit_timestamp_ms = Some(123);
+                LogicalEvent::Row(row)
+            })
+            .collect::<VecDeque<_>>();
+        assert2::assert!(source.pending == expected);
+        assert2::assert!(source.transaction_rows.is_empty());
+
+        source.transaction = Some(TransactionState {
+            xid: TransactionId(100),
+        });
+        source.enqueue_row(insert_event(PgLsn(42)));
+        assert2::assert!(source.transaction_rows.len() == 1);
     }
 
     #[tokio::test]
