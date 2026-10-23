@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::{
     PgLsn, PostgresConnectError,
@@ -414,17 +414,31 @@ impl<'a> PgOutputReader<'a> {
 
 #[derive(Debug, Clone, Default)]
 pub struct RelationCache {
-    relations: BTreeMap<RelationId, TableSchema>,
+    relations: BTreeMap<RelationId, CachedRelation>,
+}
+
+#[derive(Debug, Clone)]
+struct CachedRelation {
+    schema: TableSchema,
+    /// Preserve the original named lookup's first-match duplicate semantics.
+    column_indices: HashMap<String, usize>,
 }
 
 impl RelationCache {
     pub fn apply_relation(&mut self, event: RelationEvent) {
+        let mut column_indices = HashMap::with_capacity(event.columns.len());
+        for (index, column) in event.columns.iter().enumerate() {
+            column_indices.entry(column.name.clone()).or_insert(index);
+        }
         self.relations.insert(
             event.relation_id,
-            TableSchema {
-                schema: event.schema,
-                table: event.table,
-                columns: event.columns,
+            CachedRelation {
+                schema: TableSchema {
+                    schema: event.schema,
+                    table: event.table,
+                    columns: event.columns,
+                },
+                column_indices,
             },
         );
     }
@@ -432,28 +446,29 @@ impl RelationCache {
     /// # Errors
     /// Returns an error when configuration is invalid, protocol encoding fails, the broker rejects the request, or transport I/O fails.
     pub fn translate(&self, event: RowEvent) -> Result<EntityDifference, PostgresConnectError> {
-        let schema = self.relations.get(&event.relation_id).ok_or_else(|| {
+        let relation = self.relations.get(&event.relation_id).ok_or_else(|| {
             PostgresConnectError::Backend(format!(
                 "missing relation metadata for relation id {}",
                 event.relation_id
             ))
         })?;
+        let schema = &relation.schema;
         let table = format!("{}.{}", schema.schema, schema.table);
         let lsn = event.commit_lsn.unwrap_or(event.lsn);
 
         let (op, before, after, key_columns) = match event.kind {
             RowEventKind::Insert => {
-                let values = normalize_values(schema, event.values, "row values")?;
+                let values = normalize_values(relation, event.values, "row values")?;
                 let key_columns = extract_key_columns(schema, &values)?;
                 (Operation::Insert, Vec::new(), values, key_columns)
             }
             RowEventKind::Update { old, .. } => {
-                let values = normalize_values(schema, event.values, "row values")?;
+                let values = normalize_values(relation, event.values, "row values")?;
                 let key_columns = extract_key_columns(schema, &values)?;
                 let old = if old.is_empty() {
                     old
                 } else {
-                    normalize_values(schema, old, "old row values")?
+                    normalize_values(relation, old, "old row values")?
                 };
                 if has_any_key_column(schema, &old) {
                     let old_key_columns = extract_key_columns(schema, &old)?;
@@ -467,7 +482,7 @@ impl RelationCache {
                 (Operation::Update, old, values, key_columns)
             }
             RowEventKind::Delete { .. } => {
-                let values = normalize_values(schema, event.values, "row values")?;
+                let values = normalize_values(relation, event.values, "row values")?;
                 let key_columns = extract_key_columns(schema, &values)?;
                 (Operation::Delete, values, Vec::new(), key_columns)
             }
@@ -492,37 +507,35 @@ impl RelationCache {
 }
 
 fn normalize_values(
-    schema: &TableSchema,
+    relation: &CachedRelation,
     values: Vec<ColumnValue>,
     label: &str,
 ) -> Result<Vec<ColumnValue>, PostgresConnectError> {
     // pgoutput TupleData always follows Relation column arity and order. Key
     // tuples retain non-key positions as null markers; key extraction filters
     // those columns after names have been restored here.
-    let expected_columns: Vec<&ColumnSchema> = schema.columns.iter().collect();
+    let schema = &relation.schema;
 
-    if values.len() != expected_columns.len() {
+    if values.len() != schema.columns.len() {
         return Err(PostgresConnectError::Backend(format!(
             "column count mismatch for {}.{} {label}: decoded {} values but expected {} columns",
             schema.schema,
             schema.table,
             values.len(),
-            expected_columns.len()
+            schema.columns.len()
         )));
     }
 
-    if values.iter().all(|value| {
-        expected_columns
-            .iter()
-            .any(|column| column.name == value.name)
-    }) {
+    // Decide the whole-row fallback before coercing anything. A single missing
+    // (or differently cased) name makes every value positional, as before.
+    if values
+        .iter()
+        .all(|value| relation.column_indices.contains_key(&value.name))
+    {
         return values
             .into_iter()
             .map(|value| {
-                let column = expected_columns
-                    .iter()
-                    .find(|column| column.name == value.name)
-                    .expect("validated column name should be present");
+                let column = &schema.columns[relation.column_indices[&value.name]];
                 Ok(ColumnValue {
                     name: value.name,
                     value: coerce_value(value.value, &column.type_name)?,
@@ -533,7 +546,7 @@ fn normalize_values(
 
     values
         .into_iter()
-        .zip(expected_columns)
+        .zip(&schema.columns)
         .map(|(value, column)| {
             Ok(ColumnValue {
                 name: column.name.clone(),
@@ -696,6 +709,137 @@ mod tests {
             name: "tenant_id".to_owned(),
             value: ScalarValue::Int(value),
         }
+    }
+
+    #[test]
+    fn named_normalization_preserves_order_duplicates_and_whole_row_fallback() {
+        let mut cache = RelationCache::default();
+        cache.apply_relation(orders_relation("text"));
+        let relation = &cache.relations[&RelationId(7)];
+        let text = |name: &str, value: &str| ColumnValue {
+            name: name.into(),
+            value: ScalarValue::Text(value.into()),
+        };
+        let cases = [
+            (
+                vec![text("status", "paid"), text("id", "42")],
+                vec![status("paid"), id(42)],
+            ),
+            (vec![text("id", "7"), text("id", "8")], vec![id(7), id(8)]),
+            // One missing name makes even the recognized status value
+            // positional; a per-value fallback would attempt the wrong type.
+            (
+                vec![text("status", "42"), text("missing", "paid")],
+                vec![id(42), status("paid")],
+            ),
+            (
+                vec![text("status", "42"), text("ID", "paid")],
+                vec![id(42), status("paid")],
+            ),
+            (
+                vec![
+                    ColumnValue {
+                        name: "status".into(),
+                        value: ScalarValue::UnchangedToast,
+                    },
+                    ColumnValue {
+                        name: "id".into(),
+                        value: ScalarValue::Null,
+                    },
+                ],
+                vec![
+                    ColumnValue {
+                        name: "status".into(),
+                        value: ScalarValue::UnchangedToast,
+                    },
+                    ColumnValue {
+                        name: "id".into(),
+                        value: ScalarValue::Null,
+                    },
+                ],
+            ),
+        ];
+        for (values, expected) in cases {
+            assert2::assert!(
+                super::normalize_values(relation, values, "row values").unwrap() == expected
+            );
+        }
+        let error = super::normalize_values(relation, vec![id(42)], "old row values").unwrap_err();
+        assert2::assert!(
+            error.to_string()
+                == "postgres backend error: column count mismatch for public.orders old row values: decoded 1 values but expected 2 columns"
+        );
+        let error = super::normalize_values(
+            relation,
+            vec![text("id", "invalid"), text("status", "paid")],
+            "row values",
+        )
+        .unwrap_err();
+        assert2::assert!(
+            error
+                .to_string()
+                .contains("invalid int8 pgoutput text value")
+        );
+    }
+
+    #[test]
+    fn relation_refresh_rebuilds_first_match_column_lookup() {
+        let mut cache = RelationCache::default();
+        let mut relation = orders_relation("text");
+        relation.columns[1].name = "id".into();
+        cache.apply_relation(relation.clone());
+        let values = vec![
+            ColumnValue {
+                name: "id".into(),
+                value: ScalarValue::Text("7".into()),
+            },
+            ColumnValue {
+                name: "id".into(),
+                value: ScalarValue::Text("8".into()),
+            },
+        ];
+        assert2::assert!(
+            super::normalize_values(
+                &cache.relations[&RelationId(7)],
+                values.clone(),
+                "row values"
+            )
+            .unwrap()
+                == vec![id(7), id(8)]
+        );
+        relation.columns.swap(0, 1);
+        cache.apply_relation(relation);
+        assert2::assert!(
+            super::normalize_values(
+                &cache.relations[&RelationId(7)],
+                values.clone(),
+                "row values"
+            )
+            .unwrap()
+                == values
+        );
+        cache.apply_relation(orders_relation("bool"));
+        assert2::assert!(
+            super::normalize_values(
+                &cache.relations[&RelationId(7)],
+                vec![
+                    id(7),
+                    ColumnValue {
+                        name: "status".into(),
+                        value: ScalarValue::Text("t".into())
+                    }
+                ],
+                "row values",
+            )
+            .unwrap()
+                == vec![
+                    id(7),
+                    ColumnValue {
+                        name: "status".into(),
+                        value: ScalarValue::Bool(true)
+                    }
+                ]
+        );
     }
 
     fn composite_key_orders_relation() -> RelationEvent {
@@ -1160,7 +1304,10 @@ mod decode_tests {
     use crate::{
         PgLsn, PostgresConnectError,
         ids::{CommitLsn, EndLsn, RelationId, TransactionId},
-        model::{ColumnSchema, ColumnValue, ScalarValue},
+        model::{
+            ColumnSchema, ColumnValue, EntityDifference, EntityKey, Operation, ScalarValue,
+            TableSchema,
+        },
     };
 
     fn put_i16(bytes: &mut Vec<u8>, value: i16) {
@@ -1208,6 +1355,107 @@ mod decode_tests {
                     key: false,
                 },
             ],
+        }
+    }
+
+    fn wide_relation_message(columns: i16) -> Vec<u8> {
+        let mut bytes = vec![b'R'];
+        put_i32(&mut bytes, 7);
+        put_cstr(&mut bytes, "public");
+        put_cstr(&mut bytes, "wide");
+        bytes.push(b'd');
+        put_i16(&mut bytes, columns);
+        for index in 0..columns {
+            bytes.push(u8::from(index == 0));
+            put_cstr(&mut bytes, &format!("col{index}"));
+            put_i32(&mut bytes, 20);
+            put_i32(&mut bytes, -1);
+        }
+        bytes
+    }
+
+    fn put_wide_tuple(bytes: &mut Vec<u8>, columns: i16) {
+        put_i16(bytes, columns);
+        for index in 0..columns {
+            if index == columns - 2 {
+                bytes.push(b'n');
+            } else if index == columns - 1 {
+                bytes.push(b'u');
+            } else {
+                put_text_value(bytes, &index.to_string());
+            }
+        }
+    }
+
+    #[test]
+    fn matching_col_names_decode_and_translate_wide_insert_update_and_delete() {
+        for columns in [100, 500, 1_000, 1_600] {
+            let DecodedMessage::Relation(relation) =
+                decode_pgoutput_message(&wide_relation_message(columns), PgLsn(0), None).unwrap()
+            else {
+                panic!("expected relation")
+            };
+            let schema = TableSchema {
+                schema: relation.schema.clone(),
+                table: relation.table.clone(),
+                columns: relation.columns.clone(),
+            };
+            let mut cache = super::RelationCache::default();
+            cache.apply_relation(relation);
+            let expected_values: Vec<_> = (0..columns)
+                .map(|index| ColumnValue {
+                    name: format!("col{index}"),
+                    value: if index == columns - 2 {
+                        ScalarValue::Null
+                    } else if index == columns - 1 {
+                        ScalarValue::UnchangedToast
+                    } else {
+                        ScalarValue::Int(i64::from(index))
+                    },
+                })
+                .collect();
+            for (tag, op) in [
+                (b'I', Operation::Insert),
+                (b'U', Operation::Update),
+                (b'D', Operation::Delete),
+            ] {
+                let mut bytes = vec![tag];
+                put_i32(&mut bytes, 7);
+                if tag == b'U' {
+                    bytes.push(b'O');
+                    put_wide_tuple(&mut bytes, columns);
+                }
+                bytes.push(if tag == b'D' { b'O' } else { b'N' });
+                put_wide_tuple(&mut bytes, columns);
+                let DecodedMessage::Row(row) =
+                    decode_pgoutput_message(&bytes, PgLsn(50), Some(TransactionId(101))).unwrap()
+                else {
+                    panic!("expected row")
+                };
+                let expected = EntityDifference {
+                    table: "public.wide".into(),
+                    key: EntityKey {
+                        table: "public.wide".into(),
+                        columns: vec![expected_values[0].clone()],
+                    },
+                    op,
+                    before: if op == Operation::Insert {
+                        Vec::new()
+                    } else {
+                        expected_values.clone()
+                    },
+                    after: if op == Operation::Delete {
+                        Vec::new()
+                    } else {
+                        expected_values.clone()
+                    },
+                    lsn: PgLsn(50),
+                    txid: Some(TransactionId(101)),
+                    commit_timestamp_ms: None,
+                    schema: schema.clone(),
+                };
+                assert2::assert!(cache.translate(row).unwrap() == expected);
+            }
         }
     }
 
