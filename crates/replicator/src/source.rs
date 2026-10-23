@@ -173,10 +173,6 @@ impl Source<(), ReplicatedRecord> for SourceConsumer {
 
             tracing::Span::current().record("fetched", recs.len());
             for r in recs {
-                // Track the next offset to read (committed position = offset + 1).
-                self.positions
-                    .insert(format!("{}-{}", r.topic, r.partition), r.offset + 1);
-
                 self.buf.push_back(ReplicatedRecord {
                     topic: r.topic,
                     partition: PartitionIndex(r.partition),
@@ -189,10 +185,16 @@ impl Source<(), ReplicatedRecord> for SourceConsumer {
             }
         }
 
-        Ok(self
-            .buf
-            .pop_front()
-            .map(|payload| ConnectRecord::new(None, Some(payload))))
+        let Some(payload) = self.buf.pop_front() else {
+            return Ok(None);
+        };
+        // Fetch may prefetch beyond the runtime's next commit boundary. Only
+        // records handed to the runtime belong in its durable checkpoint.
+        self.positions.insert(
+            format!("{}-{}", payload.topic, payload.partition.0),
+            payload.offset.0 + 1,
+        );
+        Ok(Some(ConnectRecord::new(None, Some(payload))))
     }
 
     /// Snapshot the current read positions for all partitions seen so far.
@@ -359,6 +361,55 @@ mod tests {
             .await
             .unwrap();
         assert2::assert!(offsets == BTreeMap::new());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn checkpoint_excludes_prefetched_records_and_restart_reads_them() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let broker = krabka_broker::Broker::start(krabka_broker::BrokerConfig::for_tests(
+            dir.path().to_path_buf(),
+        ))
+        .await
+        .unwrap();
+        let bootstrap = broker.listen_addr().to_string();
+        crate::test_util::create_topic(&bootstrap, "orders", 1).await;
+        for _ in 0..10 {
+            crate::test_util::produce(&bootstrap, "orders", b"k", b"v").await;
+        }
+        let mut src =
+            SourceConsumer::start(&bootstrap, "prefetch-checkpoint", &["orders".into()], None)
+                .await
+                .unwrap();
+        let mut delivered = 0;
+        for _ in 0..200 {
+            if src.poll().await.unwrap().is_some() {
+                delivered += 1;
+                if delivered == 3 {
+                    break;
+                }
+            }
+        }
+        assert2::assert!(delivered == 3);
+        assert2::assert!(!src.buf.is_empty());
+        let checkpoint = src.checkpoint().unwrap();
+        assert2::assert!(checkpoint.position.get("orders-0") == Some(&OffsetValue::Long(3)));
+        src.close().await.unwrap();
+        let mut restarted =
+            SourceConsumer::start(&bootstrap, "prefetch-restarted", &["orders".into()], None)
+                .await
+                .unwrap();
+        restarted.seek(checkpoint).await.unwrap();
+        let mut offsets = Vec::new();
+        for _ in 0..200 {
+            if let Some(record) = restarted.poll().await.unwrap() {
+                offsets.push(record.value.unwrap().offset.0);
+                if offsets.len() == 7 {
+                    break;
+                }
+            }
+        }
+        assert2::assert!(offsets == (3..10).collect::<Vec<_>>());
+        restarted.close().await.unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
