@@ -12,6 +12,13 @@ use crate::{
 
 /// Accumulates [`OffsetSync`] records and translates committed source offsets to
 /// their corresponding target offsets.
+///
+/// The store deliberately retains every distinct upstream anchor for its
+/// process lifetime. This conservative policy lets consumer groups that have
+/// been inactive for a long time still translate from an old anchor. A caller
+/// must clear the store when it detects that the offset-sync topic was truncated
+/// or recreated; otherwise, mappings are never expired merely due to age or the
+/// arrival of newer syncs.
 #[derive(Default)]
 pub struct OffsetSyncStore {
     /// Outer key: (topic, partition). Inner key: upstream offset → downstream offset.
@@ -26,6 +33,16 @@ impl OffsetSyncStore {
             .entry((s.topic, s.partition))
             .or_default()
             .insert(s.upstream, s.downstream);
+    }
+
+    /// Remove all translation anchors.
+    ///
+    /// Incremental readers must call this before rebuilding when any input
+    /// partition cursor is no longer valid. Offset-sync topic partitions do not
+    /// correspond one-to-one with the source topic-partitions stored here, so a
+    /// partial reset could retain stale translations.
+    pub fn clear(&mut self) {
+        self.syncs.clear();
     }
 
     /// Translate a committed source offset to its target offset.
@@ -86,5 +103,60 @@ mod tests {
                 ) == want.map(DownstreamOffset)
             );
         }
+    }
+
+    #[test]
+    fn retains_old_anchors_after_newer_syncs_arrive() {
+        let mut store = OffsetSyncStore::default();
+        for (upstream, downstream) in [(10, 100), (20, 200), (30, 300)] {
+            store.ingest(OffsetSync {
+                topic: "orders".into(),
+                partition: PartitionIndex(0),
+                upstream: UpstreamOffset(upstream),
+                downstream: DownstreamOffset(downstream),
+            });
+        }
+
+        assert2::assert!(
+            store.translate("orders", PartitionIndex(0), CommittedOffset(15))
+                == Some(DownstreamOffset(105))
+        );
+        assert2::assert!(
+            store.translate("orders", PartitionIndex(0), CommittedOffset(35))
+                == Some(DownstreamOffset(305))
+        );
+    }
+
+    #[test]
+    fn clear_removes_every_mapping() {
+        let mut store = OffsetSyncStore::default();
+        for (topic, partition, downstream) in
+            [("orders", 0, 100), ("orders", 1, 200), ("users", 0, 300)]
+        {
+            store.ingest(OffsetSync {
+                topic: topic.into(),
+                partition: PartitionIndex(partition),
+                upstream: UpstreamOffset(10),
+                downstream: DownstreamOffset(downstream),
+            });
+        }
+
+        store.clear();
+
+        assert2::assert!(
+            store
+                .translate("orders", PartitionIndex(0), CommittedOffset(10))
+                .is_none()
+        );
+        assert2::assert!(
+            store
+                .translate("orders", PartitionIndex(1), CommittedOffset(10))
+                .is_none()
+        );
+        assert2::assert!(
+            store
+                .translate("users", PartitionIndex(0), CommittedOffset(10))
+                .is_none()
+        );
     }
 }

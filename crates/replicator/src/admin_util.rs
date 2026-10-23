@@ -494,7 +494,7 @@ pub(crate) async fn read_last_value_for_key_with_runtime_policy(
 }
 
 /// Returns `true` if the error message shows that the topic does not exist.
-fn is_unknown_topic_error(msg: &str) -> bool {
+pub(crate) fn is_unknown_topic_error(msg: &str) -> bool {
     msg.contains("UNKNOWN_TOPIC_OR_PARTITION")
         || msg.contains("unknown topic")
         || msg.contains("UnknownTopicOrPartition")
