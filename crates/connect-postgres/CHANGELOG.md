@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-11-11
+
 - Cache first-match column lookups per relation so wide named-row normalization uses linear work while preserving positional fallback and schema refresh behavior (#33).
 
 ## [0.3.8] — 2026-06-23

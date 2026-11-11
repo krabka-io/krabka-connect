@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-11-11
+
 - Disable unused offset-sync observations by default and add an explicit bounded observation capacity; durable sync publication is unchanged (#32).
 
 ## [0.3.8] — 2026-06-23
